@@ -1,0 +1,191 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+
+<head>
+  <meta http-equiv="Content-Type" content="text/html;charset=utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<link href="coqdoc.css" rel="stylesheet" type="text/css" />
+<link href="coqdocjs.css" rel="stylesheet" type="text/css"/>
+<link href="toc.css" rel="stylesheet" type="text/css"/>
+<script type="text/javascript" src="config.js"></script>
+<script type="text/javascript" src="coqdocjs.js"></script>
+</head>
+
+<body onload="document.getElementById('content').focus()">
+  <div id="header">
+    <span class="left">
+      <span class="modulename"> <script> document.write(document.title) </script> </span>
+    </span>
+
+    <span class="button" id="toggle-proofs"></span>
+
+    <span class="right">
+      <a href="toc.html">Table of contents</a>
+      <a href="https://github.com/AU-COBRA/ConCert" target="_balnk">Project Page</a>
+    </span>
+</div>
+  <div id="content" tabindex="-1" onblur="document.getElementById('content').focus()">
+    <div id="js-toc-header" class="toc-header">Contents:</div>
+    <div id="js-toc" class="toc" data-toc="h1,h2,h3,h4" data-toc-container="doc">
+    </div>
+    <div id="main">
+<h1 class="libtitle">Library ConCert.Examples.dexter.Dexter</h1>
+
+<div class="code">
+<span class="comment">(*&nbsp;A&nbsp;token-asset&nbsp;exchange&nbsp;contract&nbsp;based&nbsp;on&nbsp;Dexter<br/>
+&nbsp;&nbsp;&nbsp;https://gitlab.com/camlcase-dev/dexter/-/blob/f4ef07ea672a1397b58c2134b3437bb5ef69bcaa/dexter-contracts-ligo/dexter.ligo&nbsp;*)</span><br/>
+<span class="id" title="keyword">From</span> <span class="id" title="var">Coq</span> <span class="id" title="keyword">Require</span> <span class="id" title="keyword">Import</span> <span class="id" title="var">ZArith_base</span>.<br/>
+<span class="id" title="keyword">From</span> <span class="id" title="var">Coq</span> <span class="id" title="keyword">Require</span> <span class="id" title="keyword">Import</span> <span class="id" title="var">List</span>. <span class="id" title="keyword">Import</span> <span class="id" title="var">ListNotations</span>.<br/>
+<span class="id" title="keyword">From</span> <span class="id" title="var">ConCert.Utils</span> <span class="id" title="keyword">Require</span> <span class="id" title="keyword">Import</span> <span class="id" title="var">RecordUpdate</span>.<br/>
+<span class="id" title="keyword">From</span> <span class="id" title="var">ConCert.Execution</span> <span class="id" title="keyword">Require</span> <span class="id" title="keyword">Import</span> <span class="id" title="var">Blockchain</span>.<br/>
+<span class="id" title="keyword">From</span> <span class="id" title="var">ConCert.Execution</span> <span class="id" title="keyword">Require</span> <span class="id" title="keyword">Import</span> <span class="id" title="var">ContractCommon</span>.<br/>
+<span class="id" title="keyword">From</span> <span class="id" title="var">ConCert.Execution</span> <span class="id" title="keyword">Require</span> <span class="id" title="keyword">Import</span> <span class="id" title="var">Monads</span>.<br/>
+<span class="id" title="keyword">From</span> <span class="id" title="var">ConCert.Execution</span> <span class="id" title="keyword">Require</span> <span class="id" title="keyword">Import</span> <span class="id" title="var">Serializable</span>.<br/>
+<span class="id" title="keyword">From</span> <span class="id" title="var">ConCert.Examples.EIP20</span> <span class="id" title="keyword">Require</span> <span class="id" title="var">EIP20Token</span>.<br/>
+
+<br/>
+<span class="comment">(*&nbsp;A&nbsp;liquidity&nbsp;exchange&nbsp;contract&nbsp;inspired&nbsp;by&nbsp;the&nbsp;Dexter&nbsp;contract.<br/>
+&nbsp;&nbsp;&nbsp;Allows&nbsp;for&nbsp;exchanging&nbsp;tokens&nbsp;to&nbsp;money,&nbsp;and&nbsp;allows&nbsp;the&nbsp;owner&nbsp;to&nbsp;add&nbsp;tokens&nbsp;to&nbsp;the<br/>
+&nbsp;&nbsp;&nbsp;reserve&nbsp;held&nbsp;by&nbsp;this&nbsp;contract.&nbsp;*)</span><br/>
+<span class="id" title="keyword">Section</span> <span class="id" title="var">Dexter</span>.<br/>
+&nbsp;&nbsp;<span class="id" title="keyword">Context</span> {<span class="id" title="var">BaseTypes</span> : <span class="id" title="var">ChainBase</span>}.<br/>
+&nbsp;&nbsp;<span class="id" title="keyword">Set</span> <span class="id" title="var">Primitive</span> <span class="id" title="var">Projections</span>.<br/>
+&nbsp;&nbsp;<span class="id" title="keyword">Set</span> <span class="id" title="var">Nonrecursive</span> <span class="id" title="var">Elimination</span> <span class="id" title="var">Schemes</span>.<br/>
+&nbsp;&nbsp;<span class="id" title="keyword">Open</span> <span class="id" title="keyword">Scope</span> <span class="id" title="var">N_scope</span>.<br/>
+
+<br/>
+&nbsp;&nbsp;<span class="id" title="keyword">Record</span> <span class="id" title="var">exchange_param</span> :=<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="var">build_exchange_param</span> {<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="var">exchange_owner</span> : <span class="id" title="var">Address</span>;<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="var">tokens_sold</span> : <span class="id" title="var">N</span>;<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;}.<br/>
+
+<br/>
+&nbsp;&nbsp;<span class="id" title="keyword">Inductive</span> <span class="id" title="var">Msg</span> :=<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;| <span class="id" title="var">tokens_to_asset</span> : <span class="id" title="var">exchange_param</span> -&gt; <span class="id" title="var">Msg</span><br/>
+&nbsp;&nbsp;&nbsp;&nbsp;| <span class="id" title="var">add_to_tokens_reserve</span> : <span class="id" title="var">Msg</span>.<br/>
+
+<br/>
+&nbsp;&nbsp;<span class="id" title="keyword">Record</span> <span class="id" title="var">Setup</span> :=<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="var">build_setup</span> {<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="var">token_caddr_</span> : <span class="id" title="var">Address</span>;<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="var">token_pool_</span> : <span class="id" title="var">N</span>;<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;}.<br/>
+
+<br/>
+&nbsp;&nbsp;<span class="id" title="keyword">Record</span> <span class="id" title="var">State</span> :=<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="var">build_state</span> {<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="var">token_pool</span> : <span class="id" title="var">N</span>;<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="var">price_history</span> : <span class="id" title="var">list</span> <span class="id" title="var">Amount</span>;<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="var">token_caddr</span> : <span class="id" title="var">Address</span>;<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;}.<br/>
+
+<br/>
+&nbsp;&nbsp;<span class="id" title="var">MetaCoq</span> <span class="id" title="var">Run</span> (<span class="id" title="var">make_setters</span> <span class="id" title="var">State</span>).<br/>
+&nbsp;&nbsp;<span class="id" title="var">MetaCoq</span> <span class="id" title="var">Run</span> (<span class="id" title="var">make_setters</span> <span class="id" title="var">Setup</span>).<br/>
+
+<br/>
+&nbsp;&nbsp;<span class="id" title="keyword">Section</span> <span class="id" title="var">Serialization</span>.<br/>
+
+<br/>
+&nbsp;&nbsp;<span class="id" title="keyword">Global Instance</span> <span class="id" title="var">exchange_paramserializable</span> : <span class="id" title="var">Serializable</span> <span class="id" title="var">exchange_param</span> :=<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="var">Derive</span> <span class="id" title="var">Serializable</span> <span class="id" title="var">exchange_param_rect</span> &lt;<span class="id" title="var">build_exchange_param</span>&gt;.<br/>
+
+<br/>
+&nbsp;&nbsp;<span class="id" title="keyword">Global Instance</span> <span class="id" title="var">DexterMsg_serializable</span> : <span class="id" title="var">Serializable</span> <span class="id" title="var">Msg</span> :=<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="var">Derive</span> <span class="id" title="var">Serializable</span> <span class="id" title="var">Msg_rect</span> &lt;<span class="id" title="var">tokens_to_asset</span>, <span class="id" title="var">add_to_tokens_reserve</span>&gt;.<br/>
+
+<br/>
+&nbsp;&nbsp;<span class="id" title="keyword">Global Instance</span> <span class="id" title="var">setup_serializable</span> : <span class="id" title="var">Serializable</span> <span class="id" title="var">Setup</span> :=<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="var">Derive</span> <span class="id" title="var">Serializable</span> <span class="id" title="var">Setup_rect</span> &lt;<span class="id" title="var">build_setup</span>&gt;.<br/>
+
+<br/>
+&nbsp;&nbsp;<span class="id" title="keyword">Global Instance</span> <span class="id" title="var">state_serializable</span> : <span class="id" title="var">Serializable</span> <span class="id" title="var">State</span> :=<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="var">Derive</span> <span class="id" title="var">Serializable</span> <span class="id" title="var">State_rect</span> &lt;<span class="id" title="var">build_state</span>&gt;.<br/>
+
+<br/>
+&nbsp;&nbsp;<span class="id" title="keyword">End</span> <span class="id" title="var">Serialization</span>.<br/>
+
+<br/>
+&nbsp;&nbsp;<span class="comment">(*&nbsp;calculates&nbsp;exchange&nbsp;rate&nbsp;*)</span><br/>
+&nbsp;&nbsp;<span class="id" title="keyword">Open</span> <span class="id" title="keyword">Scope</span> <span class="id" title="var">Z_scope</span>.<br/>
+&nbsp;&nbsp;<span class="id" title="keyword">Definition</span> <span class="id" title="var">getInputPrice</span> (<span class="id" title="var">tokens_to_be_sold</span> : <span class="id" title="var">Amount</span>)<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(<span class="id" title="var">tokens_reserve</span> : <span class="id" title="var">Amount</span>)<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(<span class="id" title="var">asset_reserve</span> : <span class="id" title="var">Amount</span>) :=<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="var">Z.div</span> (<span class="id" title="var">tokens_to_be_sold</span> * 997 * <span class="id" title="var">asset_reserve</span>) (<span class="id" title="var">tokens_reserve</span> * 1000 + <span class="id" title="var">tokens_to_be_sold</span> * 997).<br/>
+
+<br/>
+&nbsp;&nbsp;<span class="id" title="keyword">Definition</span> <span class="id" title="var">begin_exchange_tokens_to_assets</span> (<span class="id" title="var">dexter_asset_reserve</span> : <span class="id" title="var">Amount</span>)<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(<span class="id" title="var">caller</span> : <span class="id" title="var">Address</span>)<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(<span class="id" title="var">params</span> : <span class="id" title="var">exchange_param</span>)<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(<span class="id" title="var">dexter_caddr</span> : <span class="id" title="var">Address</span>)<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(<span class="id" title="var">state</span> : <span class="id" title="var">State</span>)<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;: <span class="id" title="var">option</span> (<span class="id" title="var">State</span> * (<span class="id" title="var">list</span> <span class="id" title="var">ActionBody</span>)) :=<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="tactic">do</span> <span class="id" title="var">_</span> &lt;- <span class="id" title="var">throwIf</span> (<span class="id" title="var">negb</span> (<span class="id" title="var">address_eqb</span> <span class="id" title="var">caller</span> <span class="id" title="var">params</span>.(<span class="id" title="var">exchange_owner</span>))) ;<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="keyword">let</span> <span class="id" title="var">tokens_to_sell</span> := <span class="id" title="var">Z.of_N</span> <span class="id" title="var">params</span>.(<span class="id" title="var">tokens_sold</span>) <span class="id" title="tactic">in</span><br/>
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="keyword">let</span> <span class="id" title="var">tokens_price</span> := <span class="id" title="var">getInputPrice</span> <span class="id" title="var">tokens_to_sell</span> (<span class="id" title="var">Z.of_N</span> <span class="id" title="var">state</span>.(<span class="id" title="var">token_pool</span>)) <span class="id" title="var">dexter_asset_reserve</span> <span class="id" title="tactic">in</span><br/>
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="comment">(*&nbsp;send&nbsp;out&nbsp;asset&nbsp;transfer&nbsp;to&nbsp;transfer&nbsp;owner,&nbsp;and&nbsp;send&nbsp;a&nbsp;token&nbsp;transfer&nbsp;message&nbsp;to&nbsp;the&nbsp;FA2&nbsp;token&nbsp;*)</span><br/>
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="keyword">let</span> <span class="id" title="var">asset_transfer_msg</span> := <span class="id" title="var">act_transfer</span> <span class="id" title="var">params</span>.(<span class="id" title="var">exchange_owner</span>) <span class="id" title="var">tokens_price</span> <span class="id" title="tactic">in</span><br/>
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="keyword">let</span> <span class="id" title="var">token_transfer_param</span> := <br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="var">EIP20Token.transfer_from</span> <span class="id" title="var">params</span>.(<span class="id" title="var">exchange_owner</span>) <span class="id" title="var">dexter_caddr</span> <span class="id" title="var">params</span>.(<span class="id" title="var">tokens_sold</span>)  <span class="id" title="tactic">in</span><br/>
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="keyword">let</span> <span class="id" title="var">token_transfer_msg</span> := <span class="id" title="var">act_call</span> <span class="id" title="var">state</span>.(<span class="id" title="var">token_caddr</span>) 0%<span class="id" title="var">Z</span> (@<span class="id" title="var">serialize</span> <span class="id" title="var">EIP20Token.Msg</span> <span class="id" title="var">_</span> (<span class="id" title="var">token_transfer_param</span>)) <span class="id" title="tactic">in</span><br/>
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="keyword">let</span> <span class="id" title="var">new_state</span> := <span class="id" title="var">state</span>&lt;|<span class="id" title="var">token_pool</span> := <span class="id" title="var">N.add</span> <span class="id" title="var">state</span>.(<span class="id" title="var">token_pool</span>) <span class="id" title="var">params</span>.(<span class="id" title="var">tokens_sold</span>)|&gt;<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&lt;| <span class="id" title="var">price_history</span> := <span class="id" title="var">state</span>.(<span class="id" title="var">price_history</span>) ++ [<span class="id" title="var">tokens_price</span>]|&gt; <span class="id" title="tactic">in</span><br/>
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="var">Some</span> (<span class="id" title="var">new_state</span>, [<span class="id" title="var">asset_transfer_msg</span>; <span class="id" title="var">token_transfer_msg</span>]).<br/>
+
+<br/>
+&nbsp;&nbsp;<span class="id" title="keyword">Open</span> <span class="id" title="keyword">Scope</span> <span class="id" title="var">Z_scope</span>.<br/>
+&nbsp;&nbsp;<span class="id" title="keyword">Definition</span> <span class="id" title="var">receive</span> (<span class="id" title="var">chain</span> : <span class="id" title="var">Chain</span>)<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(<span class="id" title="var">ctx</span> : <span class="id" title="var">ContractCallContext</span>)<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(<span class="id" title="var">state</span> : <span class="id" title="var">State</span>)<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(<span class="id" title="var">maybe_msg</span> : <span class="id" title="var">option</span> <span class="id" title="var">Msg</span>)<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;: <span class="id" title="var">option</span> (<span class="id" title="var">State</span> * <span class="id" title="var">list</span> <span class="id" title="var">ActionBody</span>) :=<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="keyword">let</span> <span class="id" title="var">sender</span> := <span class="id" title="var">ctx</span>.(<span class="id" title="var">ctx_from</span>) <span class="id" title="tactic">in</span><br/>
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="keyword">let</span> <span class="id" title="var">caddr</span> := <span class="id" title="var">ctx</span>.(<span class="id" title="var">ctx_contract_address</span>) <span class="id" title="tactic">in</span><br/>
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="keyword">let</span> <span class="id" title="var">dexter_balance</span> := <span class="id" title="var">ctx</span>.(<span class="id" title="var">ctx_contract_balance</span>) <span class="id" title="tactic">in</span><br/>
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="keyword">match</span> <span class="id" title="var">maybe_msg</span> <span class="id" title="keyword">with</span><br/>
+&nbsp;&nbsp;&nbsp;&nbsp;| <span class="id" title="var">Some</span> (<span class="id" title="var">tokens_to_asset</span> <span class="id" title="var">params</span>) =&gt; <span class="id" title="var">begin_exchange_tokens_to_assets</span> <span class="id" title="var">dexter_balance</span> <span class="id" title="var">sender</span> <span class="id" title="var">params</span> <span class="id" title="var">caddr</span> <span class="id" title="var">state</span><br/>
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="comment">(*&nbsp;Ignore&nbsp;any&nbsp;other&nbsp;type&nbsp;of&nbsp;call&nbsp;to&nbsp;this&nbsp;contract&nbsp;*)</span><br/>
+&nbsp;&nbsp;&nbsp;&nbsp;| <span class="id" title="var">_</span> =&gt; <span class="id" title="var">Some</span> (<span class="id" title="var">state</span>, [])<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="keyword">end</span>.<br/>
+
+<br/>
+&nbsp;&nbsp;<span class="id" title="keyword">Definition</span> <span class="id" title="var">init</span> (<span class="id" title="var">chain</span> : <span class="id" title="var">Chain</span>)<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(<span class="id" title="var">ctx</span> : <span class="id" title="var">ContractCallContext</span>)<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(<span class="id" title="var">setup</span> : <span class="id" title="var">Setup</span>) : <span class="id" title="var">option</span> <span class="id" title="var">State</span> :=<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="var">Some</span> {|<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="var">token_pool</span> := <span class="id" title="var">setup</span>.(<span class="id" title="var">token_pool_</span>);<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="var">token_caddr</span> := <span class="id" title="var">setup</span>.(<span class="id" title="var">token_caddr_</span>);<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="var">price_history</span> := []<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;|}.<br/>
+
+<br/>
+&nbsp;&nbsp;<span class="id" title="keyword">Definition</span> <span class="id" title="var">contract</span> : <span class="id" title="var">Contract</span> <span class="id" title="var">Setup</span> <span class="id" title="var">Msg</span> <span class="id" title="var">State</span> :=<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="var">build_contract</span> <span class="id" title="var">init</span> <span class="id" title="var">receive</span>.<br/>
+
+<br/>
+<span class="id" title="keyword">End</span> <span class="id" title="var">Dexter</span>.<br/>
+</div>
+</div>
+<div id="footer">
+  Generated by <a href="https://coq.inria.fr/">coqdoc</a> and improved with <a href="https://github.com/tebbi/coqdocjs">CoqdocJS</a> and <a href="https://github.com/jgallen23/toc">TOC</a>
+</div>
+</div>
+<script>
+  const elements = document.getElementsByClassName("libtitle");
+  while(elements.length > 0){
+        elements[0].parentNode.removeChild(elements[0]);
+  }
+  if (window.location.pathname.endsWith("/toc.html")) {
+      const jstocDiv = document.getElementById("js-toc");
+      jstocDiv.classList.remove("toc");
+      jstocDiv.classList.add("jstoc-hidden");
+      const jstocHeaderDiv = document.getElementById("js-toc-header");
+      jstocHeaderDiv.classList.add("jstoc-hidden");
+  }
+  console.log(window.location.pathname);
+</script>
+<script type="text/javascript" src="toc.js"></script>
+</body>
+
+</html>

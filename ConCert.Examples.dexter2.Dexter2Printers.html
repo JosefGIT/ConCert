@@ -1,0 +1,304 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+
+<head>
+  <meta http-equiv="Content-Type" content="text/html;charset=utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<link href="coqdoc.css" rel="stylesheet" type="text/css" />
+<link href="coqdocjs.css" rel="stylesheet" type="text/css"/>
+<link href="toc.css" rel="stylesheet" type="text/css"/>
+<script type="text/javascript" src="config.js"></script>
+<script type="text/javascript" src="coqdocjs.js"></script>
+</head>
+
+<body onload="document.getElementById('content').focus()">
+  <div id="header">
+    <span class="left">
+      <span class="modulename"> <script> document.write(document.title) </script> </span>
+    </span>
+
+    <span class="button" id="toggle-proofs"></span>
+
+    <span class="right">
+      <a href="toc.html">Table of contents</a>
+      <a href="https://github.com/AU-COBRA/ConCert" target="_balnk">Project Page</a>
+    </span>
+</div>
+  <div id="content" tabindex="-1" onblur="document.getElementById('content').focus()">
+    <div id="js-toc-header" class="toc-header">Contents:</div>
+    <div id="js-toc" class="toc" data-toc="h1,h2,h3,h4" data-toc-container="doc">
+    </div>
+    <div id="main">
+<h1 class="libtitle">Library ConCert.Examples.dexter2.Dexter2Printers</h1>
+
+<div class="code">
+<span class="id" title="keyword">From</span> <span class="id" title="var">ConCert.Execution</span> <span class="id" title="keyword">Require</span> <span class="id" title="keyword">Import</span> <span class="id" title="var">Blockchain</span>.<br/>
+<span class="id" title="keyword">From</span> <span class="id" title="var">ConCert.Execution</span> <span class="id" title="keyword">Require</span> <span class="id" title="keyword">Import</span> <span class="id" title="var">Serializable</span>.<br/>
+<span class="id" title="keyword">From</span> <span class="id" title="var">ConCert.Execution.Test</span> <span class="id" title="keyword">Require</span> <span class="id" title="keyword">Import</span> <span class="id" title="var">QCTest</span>.<br/>
+<span class="id" title="keyword">From</span> <span class="id" title="var">ConCert.Examples.FA2</span> <span class="id" title="keyword">Require</span> <span class="id" title="keyword">Import</span> <span class="id" title="var">FA2Token</span>.<br/>
+<span class="id" title="keyword">From</span> <span class="id" title="var">ConCert.Examples.FA2</span> <span class="id" title="keyword">Require</span> <span class="id" title="keyword">Import</span> <span class="id" title="var">FA2Printers</span>.<br/>
+<span class="id" title="keyword">From</span> <span class="id" title="var">ConCert.Examples.Dexter2</span> <span class="id" title="keyword">Require</span> <span class="id" title="keyword">Import</span> <span class="id" title="var">Dexter2CPMM</span>.<br/>
+<span class="id" title="keyword">From</span> <span class="id" title="var">ConCert.Examples.Dexter2</span> <span class="id" title="keyword">Require</span> <span class="id" title="keyword">Import</span> <span class="id" title="var">Dexter2FA12</span>.<br/>
+
+<br/>
+<span class="id" title="keyword">Local Open</span> <span class="id" title="keyword">Scope</span> <span class="id" title="var">string_scope</span>.<br/>
+
+<br/>
+</div>
+
+<div class="doc">
+<a name="lab231"></a><h1 class="section">Dexter2 CPMM printers</h1>
+
+</div>
+<div class="code">
+<span class="id" title="keyword">Module</span> <span class="id" title="var">NullAddressLocalBlockcain</span> &lt;: <span class="id" title="var">NullAddress</span>.<br/>
+&nbsp;&nbsp;<span class="id" title="keyword">Definition</span> <span class="id" title="var">BaseTypes</span> : <span class="id" title="var">ChainBase</span> := <span class="id" title="var">LocalChainBase</span>.<br/>
+&nbsp;&nbsp;<span class="id" title="keyword">Definition</span> <span class="id" title="var">null_address</span> := <span class="id" title="var">creator</span>.<br/>
+&nbsp;&nbsp;<span class="id" title="keyword">Definition</span> <span class="id" title="var">set_delegate_call</span> := (<span class="id" title="keyword">fun</span> <span class="id" title="var">_</span> : @<span class="id" title="var">baker_address</span> <span class="id" title="var">BaseTypes</span> =&gt; @<span class="id" title="var">nil</span> (@<span class="id" title="var">ActionBody</span> <span class="id" title="var">BaseTypes</span>)).<br/>
+&nbsp;&nbsp;<span class="id" title="keyword">Lemma</span> <span class="id" title="var">delegate_call</span> : <span class="id" title="keyword">forall</span> <span class="id" title="var">addr</span>, <span class="id" title="var">List.Forall</span> (<span class="id" title="keyword">fun</span> <span class="id" title="var">action</span> =&gt; <br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="keyword">match</span> <span class="id" title="var">action</span> <span class="id" title="keyword">with</span><br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;| <span class="id" title="var">act_transfer</span> <span class="id" title="var">_</span> <span class="id" title="var">_</span> =&gt; <span class="id" title="var">False</span><br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;| <span class="id" title="var">act_call</span> <span class="id" title="var">_</span> <span class="id" title="var">_</span> <span class="id" title="var">_</span> =&gt; <span class="id" title="var">False</span><br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;| <span class="id" title="var">act_deploy</span> <span class="id" title="var">_</span> <span class="id" title="var">_</span> <span class="id" title="var">_</span> =&gt; <span class="id" title="var">False</span><br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="keyword">end</span>) (<span class="id" title="var">set_delegate_call</span> <span class="id" title="var">addr</span>).<br/>
+&nbsp;&nbsp;<span class="id" title="keyword">Proof</span>.<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="var">now</span> <span class="id" title="tactic">unfold</span> <span class="id" title="var">set_delegate_call</span>.<br/>
+&nbsp;&nbsp;<span class="id" title="keyword">Qed</span>.<br/>
+<span class="id" title="keyword">End</span> <span class="id" title="var">NullAddressLocalBlockcain</span>.<br/>
+<span class="id" title="keyword">Module</span> <span class="id" title="var">DEX2</span> := <span class="id" title="var">Dexter2</span> <span class="id" title="var">DSInstances</span> <span class="id" title="var">NullAddressLocalBlockcain</span>.<br/>
+
+<br/>
+<span class="id" title="keyword">Instance</span> <span class="id" title="var">showAddLiqduidityParam</span> : <span class="id" title="keyword">Show</span> <span class="id" title="var">add_liquidity_param</span> :=<br/>
+{|<br/>
+&nbsp;&nbsp;<span class="id" title="var">show</span> <span class="id" title="var">p</span> := "params{" ++ <br/>
+&nbsp;&nbsp;&nbsp;&nbsp;"owner: " ++ <span class="id" title="var">show</span> <span class="id" title="var">p</span>.(<span class="id" title="var">owner</span>) ++ <span class="id" title="var">sep</span> ++<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;"min lqt minted: " ++ <span class="id" title="var">show</span> <span class="id" title="var">p</span>.(<span class="id" title="var">minLqtMinted</span>) ++ <span class="id" title="var">sep</span> ++<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;"max tokens deposited: " ++ <span class="id" title="var">show</span> <span class="id" title="var">p</span>.(<span class="id" title="var">maxTokensDeposited</span>) ++ <span class="id" title="var">sep</span> ++<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;"deadline: " ++ <span class="id" title="var">show</span> <span class="id" title="var">p</span>.(<span class="id" title="var">add_deadline</span>) ++ "}"<br/>
+|}.<br/>
+
+<br/>
+<span class="id" title="keyword">Instance</span> <span class="id" title="var">showRemoveLiqduidityParam</span> : <span class="id" title="keyword">Show</span> <span class="id" title="var">remove_liquidity_param</span> :=<br/>
+{|<br/>
+&nbsp;&nbsp;<span class="id" title="var">show</span> <span class="id" title="var">p</span> := "params{" ++ <br/>
+&nbsp;&nbsp;&nbsp;&nbsp;"to: " ++ <span class="id" title="var">show</span> <span class="id" title="var">p</span>.(<span class="id" title="var">liquidity_to</span>) ++ <span class="id" title="var">sep</span> ++<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;"lqt burned: " ++ <span class="id" title="var">show</span> <span class="id" title="var">p</span>.(<span class="id" title="var">lqtBurned</span>) ++ <span class="id" title="var">sep</span> ++<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;"min xtz withdrawn: " ++ <span class="id" title="var">show</span> <span class="id" title="var">p</span>.(<span class="id" title="var">minXtzWithdrawn</span>) ++ <span class="id" title="var">sep</span> ++<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;"min tokens withdrawn: " ++ <span class="id" title="var">show</span> <span class="id" title="var">p</span>.(<span class="id" title="var">minTokensWithdrawn</span>) ++ <span class="id" title="var">sep</span> ++<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;"deadline: " ++ <span class="id" title="var">show</span> <span class="id" title="var">p</span>.(<span class="id" title="var">remove_deadline</span>) ++ "}"<br/>
+|}.<br/>
+
+<br/>
+<span class="id" title="keyword">Instance</span> <span class="id" title="var">showXtzToTokenParam</span> : <span class="id" title="keyword">Show</span> <span class="id" title="var">xtz_to_token_param</span> :=<br/>
+{|<br/>
+&nbsp;&nbsp;<span class="id" title="var">show</span> <span class="id" title="var">p</span> := "params{" ++ <br/>
+&nbsp;&nbsp;&nbsp;&nbsp;"to: " ++ <span class="id" title="var">show</span> <span class="id" title="var">p</span>.(<span class="id" title="var">tokens_to</span>) ++ <span class="id" title="var">sep</span> ++<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;"min tokens bought: " ++ <span class="id" title="var">show</span> <span class="id" title="var">p</span>.(<span class="id" title="var">minTokensBought</span>) ++ <span class="id" title="var">sep</span> ++<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;"deadline: " ++ <span class="id" title="var">show</span> <span class="id" title="var">p</span>.(<span class="id" title="var">xtt_deadline</span>) ++ "}"<br/>
+|}.<br/>
+
+<br/>
+<span class="id" title="keyword">Instance</span> <span class="id" title="var">showTokenToXtzParam</span> : <span class="id" title="keyword">Show</span> <span class="id" title="var">token_to_xtz_param</span> :=<br/>
+{|<br/>
+&nbsp;&nbsp;<span class="id" title="var">show</span> <span class="id" title="var">p</span> := "params{" ++ <br/>
+&nbsp;&nbsp;&nbsp;&nbsp;"to: " ++ <span class="id" title="var">show</span> <span class="id" title="var">p</span>.(<span class="id" title="var">xtz_to</span>) ++ <span class="id" title="var">sep</span> ++<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;"tokens sold: " ++ <span class="id" title="var">show</span> <span class="id" title="var">p</span>.(<span class="id" title="var">tokensSold</span>) ++ <span class="id" title="var">sep</span> ++<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;"min xtz bought: " ++ <span class="id" title="var">show</span> <span class="id" title="var">p</span>.(<span class="id" title="var">minXtzBought</span>) ++ <span class="id" title="var">sep</span> ++<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;"deadline: " ++ <span class="id" title="var">show</span> <span class="id" title="var">p</span>.(<span class="id" title="var">ttx_deadline</span>) ++ "}"<br/>
+|}.<br/>
+
+<br/>
+<span class="id" title="keyword">Instance</span> <span class="id" title="var">showSetBakerParam</span> : <span class="id" title="keyword">Show</span> <span class="id" title="var">set_baker_param</span> :=<br/>
+{|<br/>
+&nbsp;&nbsp;<span class="id" title="var">show</span> <span class="id" title="var">p</span> := "params{" ++ <br/>
+&nbsp;&nbsp;&nbsp;&nbsp;"baker: " ++ <span class="id" title="var">show</span> <span class="id" title="var">p</span>.(<span class="id" title="var">baker</span>) ++ <span class="id" title="var">sep</span> ++<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;"freeze: " ++ <span class="id" title="var">show</span> <span class="id" title="var">p</span>.(<span class="id" title="var">freezeBaker_</span>) ++ "}"<br/>
+|}.<br/>
+
+<br/>
+<span class="id" title="keyword">Instance</span> <span class="id" title="var">showTokenToTokenParam</span> : <span class="id" title="keyword">Show</span> <span class="id" title="var">token_to_token_param</span> :=<br/>
+{|<br/>
+&nbsp;&nbsp;<span class="id" title="var">show</span> <span class="id" title="var">p</span> := "params{" ++ <br/>
+&nbsp;&nbsp;&nbsp;&nbsp;"exchange address: " ++ <span class="id" title="var">show</span> <span class="id" title="var">p</span>.(<span class="id" title="var">outputDexterContract</span>) ++ <span class="id" title="var">sep</span> ++<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;"to: " ++ <span class="id" title="var">show</span> <span class="id" title="var">p</span>.(<span class="id" title="var">to_</span>) ++ <span class="id" title="var">sep</span> ++<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;"min tokens bought: " ++ <span class="id" title="var">show</span> <span class="id" title="var">p</span>.(<span class="id" title="var">minTokensBought_</span>) ++ <span class="id" title="var">sep</span> ++<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;"tokens sold: " ++ <span class="id" title="var">show</span> <span class="id" title="var">p</span>.(<span class="id" title="var">tokensSold_</span>) ++ <span class="id" title="var">sep</span> ++<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;"deadline: " ++ <span class="id" title="var">show</span> <span class="id" title="var">p</span>.(<span class="id" title="var">ttt_deadline</span>) ++ "}"<br/>
+|}.<br/>
+
+<br/>
+<span class="id" title="keyword">Instance</span> <span class="id" title="var">showCPMMDexterMsg</span> : <span class="id" title="keyword">Show</span> <span class="id" title="var">DexterMsg</span> :=<br/>
+{|<br/>
+&nbsp;&nbsp;<span class="id" title="var">show</span> <span class="id" title="var">m</span> :=<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="keyword">match</span> <span class="id" title="var">m</span> <span class="id" title="keyword">with</span><br/>
+&nbsp;&nbsp;&nbsp;&nbsp;| <span class="id" title="var">AddLiquidity</span> <span class="id" title="var">param</span> =&gt; "add_liquidity " ++ <span class="id" title="var">show</span> <span class="id" title="var">param</span><br/>
+&nbsp;&nbsp;&nbsp;&nbsp;| <span class="id" title="var">RemoveLiquidity</span> <span class="id" title="var">param</span> =&gt; "remove_liquidity " ++ <span class="id" title="var">show</span> <span class="id" title="var">param</span><br/>
+&nbsp;&nbsp;&nbsp;&nbsp;| <span class="id" title="var">XtzToToken</span> <span class="id" title="var">param</span> =&gt; "xtz_to_token " ++ <span class="id" title="var">show</span> <span class="id" title="var">param</span><br/>
+&nbsp;&nbsp;&nbsp;&nbsp;| <span class="id" title="var">TokenToXtz</span> <span class="id" title="var">param</span> =&gt; "token_to_xtz " ++ <span class="id" title="var">show</span> <span class="id" title="var">param</span><br/>
+&nbsp;&nbsp;&nbsp;&nbsp;| <span class="id" title="var">SetBaker</span> <span class="id" title="var">param</span> =&gt; "set_baker " ++ <span class="id" title="var">show</span> <span class="id" title="var">param</span><br/>
+&nbsp;&nbsp;&nbsp;&nbsp;| <span class="id" title="var">SetManager</span> <span class="id" title="var">addr</span> =&gt; "set_manager " ++ <span class="id" title="var">show</span> <span class="id" title="var">addr</span><br/>
+&nbsp;&nbsp;&nbsp;&nbsp;| <span class="id" title="var">SetLqtAddress</span> <span class="id" title="var">addr</span> =&gt; "set_lqt_address " ++ <span class="id" title="var">show</span> <span class="id" title="var">addr</span><br/>
+&nbsp;&nbsp;&nbsp;&nbsp;| <span class="id" title="var">UpdateTokenPool</span> =&gt; "update_token_pool"<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;| <span class="id" title="var">TokenToToken</span> <span class="id" title="var">param</span> =&gt; "token_to_token " ++ <span class="id" title="var">show</span> <span class="id" title="var">param</span><br/>
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="keyword">end</span><br/>
+|}.<br/>
+
+<br/>
+<span class="id" title="keyword">Instance</span> <span class="id" title="var">showCPMMMsg</span> : <span class="id" title="keyword">Show</span> <span class="id" title="var">Dexter2CPMM.Msg</span> :=<br/>
+{|<br/>
+&nbsp;&nbsp;<span class="id" title="var">show</span> <span class="id" title="var">m</span> := <span class="id" title="var">show</span> <span class="id" title="var">m</span><br/>
+|}.<br/>
+
+<br/>
+<span class="id" title="keyword">Instance</span> <span class="id" title="var">showCPMMSetup</span> : <span class="id" title="keyword">Show</span> <span class="id" title="var">Dexter2CPMM.Setup</span> :=<br/>
+{|<br/>
+&nbsp;&nbsp;<span class="id" title="var">show</span> <span class="id" title="var">p</span> := "Setup{" ++ <br/>
+&nbsp;&nbsp;&nbsp;&nbsp;"lqt total: " ++ <span class="id" title="var">show</span> <span class="id" title="var">p</span>.(<span class="id" title="var">lqtTotal_</span>) ++ <span class="id" title="var">sep</span> ++<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;"manager: " ++ <span class="id" title="var">show</span> <span class="id" title="var">p</span>.(<span class="id" title="var">manager_</span>) ++ <span class="id" title="var">sep</span> ++<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;"token address: " ++ <span class="id" title="var">show</span> <span class="id" title="var">p</span>.(<span class="id" title="var">tokenAddress_</span>) ++ <span class="id" title="var">sep</span> ++<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;"token Id: " ++ <span class="id" title="var">show</span> <span class="id" title="var">p</span>.(<span class="id" title="var">tokenId_</span>) ++ "}"<br/>
+|}.<br/>
+
+<br/>
+<span class="id" title="keyword">Instance</span> <span class="id" title="var">showCPMMState</span> : <span class="id" title="keyword">Show</span> <span class="id" title="var">Dexter2CPMM.State</span> :=<br/>
+{|<br/>
+&nbsp;&nbsp;<span class="id" title="var">show</span> <span class="id" title="var">p</span> := "State{" ++ <br/>
+&nbsp;&nbsp;&nbsp;&nbsp;"token pool: " ++ <span class="id" title="var">show</span> <span class="id" title="var">p</span>.(<span class="id" title="var">tokenPool</span>) ++ <span class="id" title="var">sep</span> ++<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;"xtz pool: " ++ <span class="id" title="var">show</span> <span class="id" title="var">p</span>.(<span class="id" title="var">xtzPool</span>) ++ <span class="id" title="var">sep</span> ++<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;"lqt pool: " ++ <span class="id" title="var">show</span> <span class="id" title="var">p</span>.(<span class="id" title="var">lqtTotal</span>) ++ <span class="id" title="var">sep</span> ++<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;"is updating token pool: " ++ <span class="id" title="var">show</span> <span class="id" title="var">p</span>.(<span class="id" title="var">selfIsUpdatingTokenPool</span>) ++ <span class="id" title="var">sep</span> ++<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;"baker frozen: " ++ <span class="id" title="var">show</span> <span class="id" title="var">p</span>.(<span class="id" title="var">freezeBaker</span>) ++ <span class="id" title="var">sep</span> ++<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;"manager: " ++ <span class="id" title="var">show</span> <span class="id" title="var">p</span>.(<span class="id" title="var">manager</span>) ++ <span class="id" title="var">sep</span> ++<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;"token address: " ++ <span class="id" title="var">show</span> <span class="id" title="var">p</span>.(<span class="id" title="var">tokenAddress</span>) ++ <span class="id" title="var">sep</span> ++<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;"lqt address: " ++ <span class="id" title="var">show</span> <span class="id" title="var">p</span>.(<span class="id" title="var">lqtAddress</span>) ++ <span class="id" title="var">sep</span> ++<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;"token Id: " ++ <span class="id" title="var">show</span> <span class="id" title="var">p</span>.(<span class="id" title="var">tokenId</span>) ++ "}"<br/>
+|}.<br/>
+
+<br/>
+</div>
+
+<div class="doc">
+<a name="lab232"></a><h1 class="section">Dexter2 Lqt Token printers</h1>
+
+</div>
+<div class="code">
+<span class="id" title="keyword">Instance</span> <span class="id" title="var">showLqtSetup</span> : <span class="id" title="keyword">Show</span> <span class="id" title="var">Dexter2FA12.Setup</span> :=<br/>
+{|<br/>
+&nbsp;&nbsp;<span class="id" title="var">show</span> <span class="id" title="var">p</span> := "Setup{" ++ <br/>
+&nbsp;&nbsp;&nbsp;&nbsp;"admin: " ++ <span class="id" title="var">show</span> <span class="id" title="var">p</span>.(<span class="id" title="var">admin_</span>) ++ <span class="id" title="var">sep</span> ++<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;"lqt provider: " ++ <span class="id" title="var">show</span> <span class="id" title="var">p</span>.(<span class="id" title="var">lqt_provider</span>) ++ <span class="id" title="var">sep</span> ++<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;"initial pool: " ++ <span class="id" title="var">show</span> <span class="id" title="var">p</span>.(<span class="id" title="var">initial_pool</span>) ++ "}"<br/>
+|}.<br/>
+
+<br/>
+<span class="id" title="keyword">Instance</span> <span class="id" title="var">showLqtState</span> : <span class="id" title="keyword">Show</span> <span class="id" title="var">Dexter2FA12.State</span> :=<br/>
+{|<br/>
+&nbsp;&nbsp;<span class="id" title="var">show</span> <span class="id" title="var">p</span> := "State{" ++ <br/>
+&nbsp;&nbsp;&nbsp;&nbsp;"tokens: " ++ <span class="id" title="var">show</span> <span class="id" title="var">p</span>.(<span class="id" title="var">tokens</span>) ++ <span class="id" title="var">sep</span> ++<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;"allowances: " ++ <span class="id" title="var">show</span> <span class="id" title="var">p</span>.(<span class="id" title="var">allowances</span>) ++ <span class="id" title="var">sep</span> ++<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;"total supply: " ++ <span class="id" title="var">show</span> <span class="id" title="var">p</span>.(<span class="id" title="var">total_supply</span>) ++ <span class="id" title="var">sep</span> ++<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;"admin: " ++ <span class="id" title="var">show</span> <span class="id" title="var">p</span>.(<span class="id" title="var">admin</span>) ++ "}"<br/>
+|}.<br/>
+
+<br/>
+<span class="id" title="keyword">Instance</span> <span class="id" title="var">showTransferParam</span> : <span class="id" title="keyword">Show</span> <span class="id" title="var">transfer_param</span> :=<br/>
+{|<br/>
+&nbsp;&nbsp;<span class="id" title="var">show</span> <span class="id" title="var">p</span> := "params{" ++ <br/>
+&nbsp;&nbsp;&nbsp;&nbsp;"from: " ++ <span class="id" title="var">show</span> <span class="id" title="var">p</span>.(<span class="id" title="var">from</span>) ++ <span class="id" title="var">sep</span> ++<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;"to: " ++ <span class="id" title="var">show</span> <span class="id" title="var">p</span>.(<span class="id" title="var">to</span>) ++ <span class="id" title="var">sep</span> ++<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;"value: " ++ <span class="id" title="var">show</span> <span class="id" title="var">p</span>.(<span class="id" title="var">value</span>) ++ "}"<br/>
+|}.<br/>
+
+<br/>
+<span class="id" title="keyword">Instance</span> <span class="id" title="var">showApproveParam</span> : <span class="id" title="keyword">Show</span> <span class="id" title="var">approve_param</span> :=<br/>
+{|<br/>
+&nbsp;&nbsp;<span class="id" title="var">show</span> <span class="id" title="var">p</span> := "params{" ++ <br/>
+&nbsp;&nbsp;&nbsp;&nbsp;"spender: " ++ <span class="id" title="var">show</span> <span class="id" title="var">p</span>.(<span class="id" title="var">spender</span>) ++ <span class="id" title="var">sep</span> ++<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;"value: " ++ <span class="id" title="var">show</span> <span class="id" title="var">p</span>.(<span class="id" title="var">value_</span>) ++ "}"<br/>
+|}.<br/>
+
+<br/>
+<span class="id" title="keyword">Instance</span> <span class="id" title="var">showMintOrBurnParam</span> : <span class="id" title="keyword">Show</span> <span class="id" title="var">mintOrBurn_param</span> :=<br/>
+{|<br/>
+&nbsp;&nbsp;<span class="id" title="var">show</span> <span class="id" title="var">p</span> := "params{" ++ <br/>
+&nbsp;&nbsp;&nbsp;&nbsp;"quantity: " ++ <span class="id" title="var">show</span> <span class="id" title="var">p</span>.(<span class="id" title="var">quantity</span>) ++ <span class="id" title="var">sep</span> ++<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;"target: " ++ <span class="id" title="var">show</span> <span class="id" title="var">p</span>.(<span class="id" title="var">target</span>) ++ "}"<br/>
+|}.<br/>
+
+<br/>
+<span class="id" title="keyword">Instance</span> <span class="id" title="var">showGetAllowanceParam</span> : <span class="id" title="keyword">Show</span> <span class="id" title="var">getAllowance_param</span> :=<br/>
+{|<br/>
+&nbsp;&nbsp;<span class="id" title="var">show</span> <span class="id" title="var">p</span> := "params{" ++ <br/>
+&nbsp;&nbsp;&nbsp;&nbsp;"request: " ++ <span class="id" title="var">show</span> <span class="id" title="var">p</span>.(<span class="id" title="var">request</span>) ++ <span class="id" title="var">sep</span> ++<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;"callback addr: " ++ <span class="id" title="var">show</span> <span class="id" title="var">p</span>.(<span class="id" title="var">allowance_callback</span>).(<span class="id" title="var">return_addr</span>) ++ "}"<br/>
+|}.<br/>
+
+<br/>
+<span class="id" title="keyword">Instance</span> <span class="id" title="var">showGetBalanceParam</span> : <span class="id" title="keyword">Show</span> <span class="id" title="var">getBalance_param</span> :=<br/>
+{|<br/>
+&nbsp;&nbsp;<span class="id" title="var">show</span> <span class="id" title="var">p</span> := "params{" ++ <br/>
+&nbsp;&nbsp;&nbsp;&nbsp;"owner: " ++ <span class="id" title="var">show</span> <span class="id" title="var">p</span>.(<span class="id" title="var">owner_</span>) ++ <span class="id" title="var">sep</span> ++<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;"callback addr: " ++ <span class="id" title="var">show</span> <span class="id" title="var">p</span>.(<span class="id" title="var">balance_callback</span>).(<span class="id" title="var">return_addr</span>) ++ "}"<br/>
+|}.<br/>
+
+<br/>
+<span class="id" title="keyword">Instance</span> <span class="id" title="var">showGetTotalSupplyParam</span> : <span class="id" title="keyword">Show</span> <span class="id" title="var">getTotalSupply_param</span> :=<br/>
+{|<br/>
+&nbsp;&nbsp;<span class="id" title="var">show</span> <span class="id" title="var">p</span> := "params{" ++ <br/>
+&nbsp;&nbsp;&nbsp;&nbsp;"callback addr: " ++ <span class="id" title="var">show</span> <span class="id" title="var">p</span>.(<span class="id" title="var">supply_callback</span>).(<span class="id" title="var">return_addr</span>) ++ "}"<br/>
+|}.<br/>
+
+<br/>
+<span class="id" title="keyword">Instance</span> <span class="id" title="var">showLqtMsg</span> : <span class="id" title="keyword">Show</span> <span class="id" title="var">Dexter2FA12.Msg</span> :=<br/>
+{|<br/>
+&nbsp;&nbsp;<span class="id" title="var">show</span> <span class="id" title="var">m</span> :=<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="keyword">match</span> <span class="id" title="var">m</span> <span class="id" title="keyword">with</span><br/>
+&nbsp;&nbsp;&nbsp;&nbsp;| <span class="id" title="var">msg_transfer</span> <span class="id" title="var">param</span> =&gt; "transfer " ++ <span class="id" title="var">show</span> <span class="id" title="var">param</span><br/>
+&nbsp;&nbsp;&nbsp;&nbsp;| <span class="id" title="var">msg_approve</span> <span class="id" title="var">param</span> =&gt; "approve " ++ <span class="id" title="var">show</span> <span class="id" title="var">param</span><br/>
+&nbsp;&nbsp;&nbsp;&nbsp;| <span class="id" title="var">msg_mint_or_burn</span> <span class="id" title="var">param</span> =&gt; "mint_or_burn " ++ <span class="id" title="var">show</span> <span class="id" title="var">param</span><br/>
+&nbsp;&nbsp;&nbsp;&nbsp;| <span class="id" title="var">msg_get_allowance</span> <span class="id" title="var">param</span> =&gt; "get_allowance " ++ <span class="id" title="var">show</span> <span class="id" title="var">param</span><br/>
+&nbsp;&nbsp;&nbsp;&nbsp;| <span class="id" title="var">msg_get_balance</span> <span class="id" title="var">param</span> =&gt; "get_balance " ++ <span class="id" title="var">show</span> <span class="id" title="var">param</span><br/>
+&nbsp;&nbsp;&nbsp;&nbsp;| <span class="id" title="var">msg_get_total_supply</span> <span class="id" title="var">param</span> =&gt; "get_total_supply " ++ <span class="id" title="var">show</span> <span class="id" title="var">param</span><br/>
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="keyword">end</span><br/>
+|}.<br/>
+
+<br/>
+</div>
+
+<div class="doc">
+<a name="lab233"></a><h1 class="section">Combined message printer</h1>
+
+</div>
+<div class="code">
+<span class="id" title="keyword">Instance</span> <span class="id" title="var">showSerializedMsg</span> : <span class="id" title="keyword">Show</span> <span class="id" title="var">SerializedValue</span> :=<br/>
+&nbsp;&nbsp;<span class="id" title="var">Derive</span> <span class="id" title="keyword">Show</span> <span class="id" title="var">Msg</span> &lt;<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="var">FA2Token.Msg</span>,<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="var">Dexter2CPMM.Msg</span>,<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="var">Dexter2FA12.Msg</span>,<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="var">FA2Token.Setup</span>,<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="var">Dexter2CPMM.Setup</span>,<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="id" title="var">Dexter2FA12.Setup</span> &gt;.<br/>
+</div>
+</div>
+<div id="footer">
+  Generated by <a href="https://coq.inria.fr/">coqdoc</a> and improved with <a href="https://github.com/tebbi/coqdocjs">CoqdocJS</a> and <a href="https://github.com/jgallen23/toc">TOC</a>
+</div>
+</div>
+<script>
+  const elements = document.getElementsByClassName("libtitle");
+  while(elements.length > 0){
+        elements[0].parentNode.removeChild(elements[0]);
+  }
+  if (window.location.pathname.endsWith("/toc.html")) {
+      const jstocDiv = document.getElementById("js-toc");
+      jstocDiv.classList.remove("toc");
+      jstocDiv.classList.add("jstoc-hidden");
+      const jstocHeaderDiv = document.getElementById("js-toc-header");
+      jstocHeaderDiv.classList.add("jstoc-hidden");
+  }
+  console.log(window.location.pathname);
+</script>
+<script type="text/javascript" src="toc.js"></script>
+</body>
+
+</html>
