@@ -129,3 +129,9 @@ crowdfunding/CrowdfundingDataExt.v
 crowdfunding/CrowdfundingExt.v
 crowdfunding/CrowdfundingCameLIGO.v
 crowdfunding/CrowdfundingCertifiedExtraction.v
+
+-Q blindauction ConCert.Examples.BlindAuction
+blindauction/BlindAuction.v
+blindauction/tests/BlindAuctionPrinters.v
+blindauction/tests/BlindAuctionTests.v
+blindauction/tests/BlindAuctionGens.v

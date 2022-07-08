@@ -21,9 +21,6 @@ From ConCert.Execution Require Import BuildUtils.
 Section BlindAuction.
 Context `{Base : ChainBase}. 
 
-
-Parameter null_address : Address.
-
 Set Nonrecursive Elimination Schemes.
 
 Record Bid := build_bid {
@@ -43,7 +40,7 @@ Record State := build_state {
   reveal_end : nat;
   ended : bool;
   bids : FMap Address Bids;
-  highest_bidder : Address;
+  highest_bidder : option Address;
   highest_bid : Amount;
   pending_returns : FMap Address Amount
 }.
@@ -108,20 +105,22 @@ Definition bid_call chain ctx state blinded_bid : option (State * list ActionBod
    Returns success of bid placement if bid is higher than current highest_bid, and an updated State *)
 Definition place_bid (state : State) (bidder : Address) (value : Amount) : bool * State :=
         let current_pending_returns := state.(pending_returns) in
-        let highest_bidder' := state.(highest_bidder) in
+        let highest_bidder'_opt := state.(highest_bidder) in
         let highest_bid' := state.(highest_bid) in
         match (value <=? highest_bid') with
         | true => (false, state)
         | false => 
             let updated_pending_returns :=
-              (if (highest_bidder' =? null_address)%address
-              then current_pending_returns
-              else let updated_pending_amount := find_pending_or_zero highest_bidder' current_pending_returns + highest_bid' in
-                   FMap.add highest_bidder' updated_pending_amount current_pending_returns)
+              match highest_bidder'_opt with
+              | Some highest_bidder' =>
+                  let updated_pending_amount := find_pending_or_zero highest_bidder' current_pending_returns + highest_bid' in
+                  FMap.add highest_bidder' updated_pending_amount current_pending_returns
+              | None => current_pending_returns
+              end
             in
             (true, state <| pending_returns := updated_pending_returns|>
                          <| highest_bid := value|>
-                         <| highest_bidder := bidder |>)
+                         <| highest_bidder := Some bidder |>)
         end.
 
 Definition add_bid_get_state state caller bid : State := 
@@ -205,7 +204,7 @@ Definition init (chain : Chain) (ctx : ContractCallContext) (setup : Setup)
     reveal_end := bidding_end + setup.(reveal_time);
     ended := false;
     bids := FMap.empty;
-    highest_bidder := null_address;
+    highest_bidder := None;
     highest_bid := 0;
     pending_returns := FMap.empty
   |}.
@@ -224,7 +223,7 @@ Global Instance State_serializable : Serializable State :=
 
 Definition contract : Contract Setup Msg State := 
     build_contract init receive.
-
+(*
 Section Theories.
 From Coq Require Import Psatz.
 
@@ -533,6 +532,7 @@ Definition test2 (incoming_calls : list (ContractCallInfo Msg)) addr :=
 (* There exists a state where a user can withdraw all money if not highest bidder *)
 (* Der eksisterer en message, som sætter alle sendte penge til pending. *)
 (* All placed bids can be put into pending by some user if not highest bidder *)
+
 Lemma can_withdraw_at_some_point : forall bstate caddr addr addr_deposit_sum,
   reachable bstate ->
   emptyable (chain_state_queue bstate) ->
@@ -600,5 +600,5 @@ Proof.
 (* Highest bidder always wins *)
 
 End Theories.
-
+*)  
 End BlindAuction.
