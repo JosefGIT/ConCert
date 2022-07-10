@@ -12,6 +12,7 @@ From ConCert.Examples.BlindAuction Require Import BlindAuction.
 (* Necessary to pass a contract adddress from the BlindAuctionTests file. *)
 Module Type BlindAuctionGensInfo.
   Parameter contract_addr : Address.
+  Parameter max_init_money_nat : nat.
 End BlindAuctionGensInfo.
 
 
@@ -22,10 +23,7 @@ Definition Env := Environment.
 Open Scope Z_scope.
 
 
-Print Msg.
-Print positive.
-
-Definition gRandom_256bit_positive : G positive :=
+(*Definition gRandom_256bit_positive : G positive :=
   let fix gPositive size := 
     match size with
     | S size' =>
@@ -36,8 +34,32 @@ Definition gRandom_256bit_positive : G positive :=
           ]
     | _ => returnGen xH
     end in
-  gPositive 256%nat.
+  gPositive 256%nat.*)
 
+Check 1.
+Definition fake_secret := 42%positive.
+
+
+Fixpoint compute_correct_values_from_hashes_aux (addr : Address) (hash : positive) (amount : nat) : (Amount * bool * positive) :=
+  let amount_Z := Z_of_nat amount in
+  match amount with
+  | S amount' =>
+      let hash_faketrue := BlindAuction.hash_bid amount_Z true fake_secret in
+      let hash_fakefalse := BlindAuction.hash_bid amount_Z false fake_secret in
+      if (hash_faketrue =? hash)%positive then (amount_Z, true, fake_secret) else
+      if (hash_fakefalse =? hash)%positive then (amount_Z, false, fake_secret) else
+      compute_correct_values_from_hashes_aux addr hash amount'
+  | _ => (0, false, fake_secret)
+  end.
+
+Fixpoint compute_correct_values_from_hashes (addr : Address) (hashes : list positive) : ((list Amount) * (list bool) * (list positive)):=
+  match hashes with
+  | hash'::hashes' =>
+    let '(value, fake, secret) := (compute_correct_values_from_hashes_aux addr hash' max_init_money_nat) in
+    let '(values, fakes, secrets) := compute_correct_values_from_hashes addr hashes' in
+    (value::values, fake::fakes, secret::secrets)
+  | _ => ([], [], [])
+  end.
 
 Definition gBlindAuctionMsg (env : Env): GOpt Action := 
     let call caller amount msg :=
@@ -46,7 +68,6 @@ Definition gBlindAuctionMsg (env : Env): GOpt Action :=
           act_from := caller;
           act_body := act_call contract_addr amount (@serialize BlindAuction.Msg BlindAuction.Msg_serializable msg)
         |} in
-    state <- returnGen (get_contract_state BlindAuction.State env contract_addr);;
     caller <- oneOf [returnGen person_1; returnGen person_2; returnGen person_3; returnGen creator];;
     let caller_balance := env.(env_account_balances) caller in
     backtrack [
@@ -60,12 +81,22 @@ Definition gBlindAuctionMsg (env : Env): GOpt Action :=
         (* Slightly more than 10% chance of making an invalid bid (if bid is strictly greater than deposit) *)
         actual_bid <- freq [(9%nat, choose (1, deposit)); (1%nat, choose (deposit, caller_balance))];;
         fake <- freq [(1%nat, returnGen true); (3%nat, returnGen false)];;
-        secret <- gRandom_256bit_positive;;
+        let secret := fake_secret in
         let secret_bid := hash_bid actual_bid fake secret in
           call caller deposit (bid secret_bid)
         );
         (1%nat,
+         state <- returnGen (get_contract_state BlindAuction.State env contract_addr);;
+         let caller_bids := BlindAuction.find_bids_or_empty caller state.(bids) in
+         let caller_blinded_bids := map (fun bid => bid.(blinded_bid)) caller_bids in
+         let '(values, fakes, secrets) := compute_correct_values_from_hashes caller caller_blinded_bids in
+         call caller 0 (reveal values fakes secrets)
+        );
+        (1%nat,
           call caller 0 withdraw
+        );
+        (1% nat,
+          call caller 0 auction_end
         )
     ].
     

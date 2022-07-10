@@ -40,6 +40,7 @@ End BlindAuctionTestSetup.
 
 Module TestInfo <: BlindAuctionGensInfo.
   Definition contract_addr := blind_auction_contract_addr.
+  Definition max_init_money_nat := 14%nat.
 End TestInfo.
 Module MG := BlindAuctionGens.BlindAuctionGens TestInfo.
 Import MG.
@@ -51,6 +52,7 @@ End NotationInfo.
 Module TN := TestNotations NotationInfo.
 Import TN.
 Locate LocalChainBase.
+
 Sample gChain.
 
   Local Open Scope Z_scope.
@@ -104,6 +106,15 @@ Definition money_gets_refunded (chain_state : ChainState) :=
   | None => false
   end.
 QuickChick (blindauction_chainbuilder ~~> money_gets_refunded).
+
+(* At some point when ended is true, the contract balance will NOT be 0. *)
+Definition money_does_not_get_refunded (chain_state : ChainState) :=
+  let contract_balance := env_account_balances chain_state contract_base_addr in
+  match get_contract_state BlindAuction.State chain_state contract_base_addr with
+  | Some state => state.(ended) && (contract_balance >? 0)
+  | None => false
+  end.
+QuickChick (blindauction_chainbuilder ~~> money_does_not_get_refunded).
 (* At some point, a user can always withdraw his bids (except if he is the highest bidder) *)
 (* TODO:*)
 Definition can_refund_at_some_point (chain_state : ChainState):=
