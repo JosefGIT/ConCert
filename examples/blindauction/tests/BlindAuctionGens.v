@@ -83,6 +83,19 @@ Definition caller_with_pending_money (state : BlindAuction.State) : GOpt Address
   ]
 .
 
+Definition caller_with_money (env : Env) (caller : Address) : option (Address * Amount) :=
+  let caller_balance := env.(env_account_balances) caller in
+  if 0 <? caller_balance
+  then Some (caller, caller_balance)
+  else None.
+
+Definition gCaller_with_money (env : Env) : GOpt (Address * Amount):=
+  backtrack [
+    (1%nat, returnGen (caller_with_money env person_1));
+    (1%nat, returnGen (caller_with_money env person_2));
+    (1%nat, returnGen (caller_with_money env person_3))
+  ].
+
 Definition gBlindAuctionMsg (env : Env) : GOpt Action :=
     let call caller amount msg :=
       returnGenSome {|
@@ -93,14 +106,13 @@ Definition gBlindAuctionMsg (env : Env) : GOpt Action :=
     state <- returnGen (get_contract_state BlindAuction.State env contract_addr);;
     let current_slot := env.(env_chain).(current_slot) in
     backtrack[
-      (5%nat,
+      (1%nat,
       (* bid *)
-      caller <- arbitrary_caller;;
-      let caller_balance := env.(env_account_balances) caller in
-      if ((caller_balance <? 1) || (state.(bidding_end) <=? current_slot)%nat)
+      if (state.(bidding_end) <=? current_slot)%nat && (current_slot <? state.(reveal_end))%nat
       then
         returnGen None
       else
+        '(caller, caller_balance) <- gCaller_with_money env;;
         deposit <- choose (1, caller_balance);;
         (* Slightly more than 10% chance of making an invalid bid (if bid is strictly greater than deposit) *)
         actual_bid <- freq [(9%nat, choose (1, deposit)); (1%nat, choose (deposit, caller_balance))];;
@@ -120,7 +132,7 @@ Definition gBlindAuctionMsg (env : Env) : GOpt Action :=
       (* withdraw *)
       (1%nat,
       caller <- caller_with_pending_money state;;
-      call caller 0 auction_end
+      call caller 0 withdraw
       );
       (* auction_end *)
       (1% nat,
