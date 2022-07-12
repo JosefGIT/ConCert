@@ -103,11 +103,12 @@ Definition bid_call chain ctx state blinded_bid : option (State * list ActionBod
     
 (* Used as an internal function in the contract
    Returns success of bid placement if bid is higher than current highest_bid, and an updated State *)
-Definition place_bid (state : State) (bidder : Address) (value : Amount) : bool * State :=
+Definition place_bid (state : State) (bidder : Address) (value : Amount) (fake : bool) (deposit : Amount) : bool * State :=
         let current_pending_returns := state.(pending_returns) in
         let highest_bidder'_opt := state.(highest_bidder) in
         let highest_bid' := state.(highest_bid) in
-        match (value <=? highest_bid') with
+        (* In the solidity implementation the last two cases are checked outside place_bid. For simplicity it is done here. *)
+        match ((value <=? highest_bid') || fake || (deposit <? value)) with
         | true => (false, state)
         | false => 
             let updated_pending_returns :=
@@ -129,22 +130,22 @@ Definition add_bid_get_state state caller bid : State :=
     let updated_bids := FMap.add caller updated_caller_bids state.(bids) in
     state <| bids := updated_bids |>.
 
-Fixpoint aux_compute_refund (refund : Amount) updated_state caller caller_bids values fakes secrets : option (Amount * State) :=
+Fixpoint aux_compute_refund (refund : Amount) state caller caller_bids values fakes secrets : option (Amount * State) :=
     match caller_bids, values, fakes, secrets with
     | caller_bid::caller_bids', value::values', fake::fakes', secret::secrets' =>
         if (caller_bid.(blinded_bid) =? hash_bid value fake secret)%positive
         then
-          let updated_refund := refund + caller_bid.(deposit) in
-          let (success, updated_state') := place_bid updated_state caller value in
-          let updated_refund' := updated_refund - (if success then value else 0) in
+          let bid_deposit := caller_bid.(deposit) in
+          let (success, updated_state') := place_bid state caller value fake bid_deposit in
+          let updated_refund := refund + bid_deposit - (if success then value else 0) in
           let updated_caller_bid := caller_bid <| deposit := 0 |> in
           let updated_state'' := add_bid_get_state updated_state' caller updated_caller_bid in
-          aux_compute_refund updated_refund' updated_state'' caller caller_bids' values' fakes' secrets'
+          aux_compute_refund updated_refund updated_state'' caller caller_bids' values' fakes' secrets'
         else
-          let updated_state' := add_bid_get_state updated_state caller caller_bid in (* If hashing is incorrect, return the bid into the state *)
+          let updated_state' := add_bid_get_state state caller caller_bid in (* If hashing is incorrect, return the bid into the state *)
           aux_compute_refund refund updated_state' caller caller_bids' values' fakes' secrets'
-    | [], [], [], [] => Some (refund, updated_state)
-    | _, _, _, _ => None
+    | [], [], [], [] => Some (refund, state)
+    | _, _, _, _ => None (* Only happens if the length of the lists in the match are not equal *)
     end.
 
 Definition compute_refund state caller caller_bids values fakes secrets :=
@@ -159,10 +160,6 @@ Definition reveal_call chain ctx state values fakes secrets: option (State * lis
     do (require_no_money_sent ctx);
     let caller := ctx.(ctx_from) in
     let caller_bids := find_bids_or_empty caller state.(bids) in
-    (*let expected_length := length caller_bids in
-    do required_true (expected_length =? length values)%nat;
-    do required_true (expected_length =? length fakes)%nat;
-    do required_true (expected_length =? length secrets)%nat;*)
     do to_refund__updated_state <- compute_refund state caller caller_bids values fakes secrets;
     let '(to_refund, updated_state) := to_refund__updated_state in
     Some (updated_state, [act_transfer caller to_refund]).
