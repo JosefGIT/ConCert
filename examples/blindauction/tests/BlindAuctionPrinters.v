@@ -6,10 +6,9 @@ From ConCert.Examples.BlindAuction Require Import BlindAuction.
 Require Import PArith.
 Local Open Scope string_scope.
 
-(* TODO! *)
 Instance showPositive : Show positive :=
 {
-  show (pos : positive) :=  match pos with | _ => "s" end
+  show (pos : positive) :=  show (Pos.to_nat pos)
 }.
 
 Derive Show for Msg.
