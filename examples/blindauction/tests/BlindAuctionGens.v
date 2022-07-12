@@ -37,6 +37,8 @@ Open Scope Z_scope.
   gPositive 256%nat.*)
 
 Check 1.
+
+(* A constant "fake secret" is used to later be able to extract the input of the hash by trying all possible inputs *)
 Definition fake_secret := 42%positive.
 
 
@@ -61,43 +63,56 @@ Fixpoint compute_correct_values_from_hashes (addr : Address) (hashes : list posi
   | _ => ([], [], [])
   end.
 
-Definition gBlindAuctionMsg (env : Env): GOpt Action := 
+Definition arbitrary_caller := oneOf [returnGen person_1; returnGen person_2; returnGen person_3; returnGen creator].
+
+Definition gBlindAuctionMsg (env : Env) : GOpt Action :=
     let call caller amount msg :=
       returnGenSome {|
           act_origin := caller;
           act_from := caller;
           act_body := act_call contract_addr amount (@serialize BlindAuction.Msg BlindAuction.Msg_serializable msg)
-        |} in
-    caller <- oneOf [returnGen person_1; returnGen person_2; returnGen person_3; returnGen creator];;
-    let caller_balance := env.(env_account_balances) caller in
-    backtrack [
-        (* bid *)
-        (1%nat,
-        if caller_balance <? 1
-        then
-          returnGen None
-        else
+      |} in
+    state <- returnGen (get_contract_state BlindAuction.State env contract_addr);;
+    let current_slot := env.(env_chain).(current_slot) in
+    backtrack[
+      (5%nat,
+      (* bid *)
+      caller <- arbitrary_caller;;
+      let caller_balance := env.(env_account_balances) caller in
+      if ((caller_balance <? 1) || (state.(bidding_end) <=? current_slot)%nat)
+      then
+        returnGen None
+      else
         deposit <- choose (1, caller_balance);;
         (* Slightly more than 10% chance of making an invalid bid (if bid is strictly greater than deposit) *)
         actual_bid <- freq [(9%nat, choose (1, deposit)); (1%nat, choose (deposit, caller_balance))];;
         fake <- freq [(1%nat, returnGen true); (3%nat, returnGen false)];;
         let secret := fake_secret in
         let secret_bid := hash_bid actual_bid fake secret in
-          call caller deposit (bid secret_bid)
-        );
-        (1%nat,
-         state <- returnGen (get_contract_state BlindAuction.State env contract_addr);;
-         let caller_bids := BlindAuction.find_bids_or_empty caller state.(bids) in
-         let caller_blinded_bids := map (fun bid => bid.(blinded_bid)) caller_bids in
-         let '(values, fakes, secrets) := compute_correct_values_from_hashes caller caller_blinded_bids in
-         call caller 0 (reveal values fakes secrets)
-        );
-        (1%nat,
-          call caller 0 withdraw
-        );
-        (1% nat,
-          call caller 0 auction_end
-        )
+        call caller deposit (bid secret_bid)
+      );
+      (* reveal *)
+      (1%nat,
+      caller <- arbitrary_caller;;
+      let caller_bids := BlindAuction.find_bids_or_empty caller state.(bids) in
+      let caller_blinded_bids := map (fun bid => bid.(blinded_bid)) caller_bids in
+      let '(values, fakes, secrets) := compute_correct_values_from_hashes caller caller_blinded_bids in
+      call caller 0 (reveal values fakes secrets)
+      );
+      (* withdraw *)
+      (1%nat,
+      caller <- arbitrary_caller;;
+      call caller 0 withdraw
+      );
+      (* auction_end *)
+      (1% nat,
+      if (current_slot <? state.(reveal_end))%nat
+      then
+        returnGen None
+      else
+        caller <- arbitrary_caller;;
+        call caller 0 auction_end
+      )
     ].
     
 
