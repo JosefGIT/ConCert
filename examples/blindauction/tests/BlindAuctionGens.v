@@ -8,7 +8,7 @@ From Coq Require Import List.
 Require Import BinPos PeanoNat.
 Import ListNotations.
 From ConCert.Examples.BlindAuction Require Import BlindAuction.
-
+Import Containers.
 (* Necessary to pass a contract adddress from the BlindAuctionTests file. *)
 Module Type BlindAuctionGensInfo.
   Parameter contract_addr : Address.
@@ -62,8 +62,26 @@ Fixpoint compute_correct_values_from_hashes (addr : Address) (hashes : list posi
     (value::values, fake::fakes, secret::secrets)
   | _ => ([], [], [])
   end.
+  
+Definition arbitrary_caller : G Address := oneOf [returnGen person_1; returnGen person_2; returnGen person_3].
+Check arbitrary_caller.
 
-Definition arbitrary_caller := oneOf [returnGen person_1; returnGen person_2; returnGen person_3; returnGen creator].
+Definition caller_has_pending_money_or_none (state : BlindAuction.State) (caller : Address) : option Address :=
+  match FMap.find caller state.(pending_returns) with
+      | Some amount =>
+          if 0 <? amount
+          then Some caller
+          else None
+      | _ => None
+      end.
+
+Definition caller_with_pending_money (state : BlindAuction.State) : GOpt Address :=
+  backtrack [
+    (1%nat, returnGen (caller_has_pending_money_or_none state person_1));
+    (1%nat, returnGen (caller_has_pending_money_or_none state person_2));
+    (1%nat, returnGen (caller_has_pending_money_or_none state person_3))
+  ]
+.
 
 Definition gBlindAuctionMsg (env : Env) : GOpt Action :=
     let call caller amount msg :=
@@ -101,8 +119,8 @@ Definition gBlindAuctionMsg (env : Env) : GOpt Action :=
       );
       (* withdraw *)
       (1%nat,
-      caller <- arbitrary_caller;;
-      call caller 0 withdraw
+      caller <- caller_with_pending_money state;;
+      call caller 0 auction_end
       );
       (* auction_end *)
       (1% nat,
