@@ -6,6 +6,7 @@ From ConCert.Execution Require Import Serializable.
 Require Import Blockchain.
 Require Import Containers.
 Require Import Extras.
+From ConCert.Utils Require Import RecordUpdate.
 From Coq Require Import Lia.
 From Coq Require Import List.
 Import ListNotations.
@@ -41,11 +42,32 @@ Ltac receive_simpl_step :=
 
 Tactic Notation "receive_simpl" := repeat (receive_simpl_step).
 
+Ltac receive_simpl_step2 g :=
+  match type of g with
+  | context[BlindAuction.receive] => unfold BlindAuction.receive in g; cbn in g
+  | context[add_bid_get_state] => unfold add_bid_get_state in g; cbn in g
+  | context[place_bid] => unfold place_bid in g; cbn in g
+  | context[required_true _] => destruct (required_true _); cbn in g; try congruence
+  | context[required_false _] => destruct (required_false _); cbn in g
+  | context[only_before] => destruct (only_before _ _); cbn in g
+  | context[only_after] => destruct (only_after _ _); cbn in g
+  | context[find_bids_or_empty] => destruct (find_bids_or_empty _ _); cbn in g
+  | context[find_pending_or_zero] => destruct (find_pending_or_zero _ _); cbn in g
+  | context[require_no_money_sent] => destruct (require_no_money_sent _); cbn in g
+  | context[if ?g then _ else _] => destruct g; cbn in g
+  end. 
+
+Tactic Notation "receive_simpl2" constr(g) := cbn in g; repeat (receive_simpl_step2 g).
+
+Definition all_hashes_are_satisfied caller_bids values fakes secrets : Prop :=
+  let zipped_info := zip (zip (zip caller_bids values) fakes) secrets in
+  Forall (fun '(caller_bid, value, fake, secret) => (caller_bid.(blinded_bid) =? hash_bid value fake secret)%positive = true) zipped_info.
+
+
 Definition total_deposit (addr : Address) (state : BlindAuction.State) : Amount:=
     sumZ deposit (find_bids_or_empty addr state.(bids)). 
 
 Definition bid_has_ended chain state := state.(bidding_end) <? chain.(current_slot)%nat.
-
 
 (* aux_compute never changes bidding_end or reveal_end *)
 Lemma aux_compute_refund_does_not_change_times : forall refund prev_state caller caller_bids values fakes secrets to_refund updated_state,
@@ -57,7 +79,6 @@ Proof.
   induction caller_bids; intros; destruct values; destruct fakes; destruct secrets; try solve [inversion H; auto].
   unfold aux_compute_refund in H. receive_simpl; try solve [apply IHcaller_bids in H; apply H].
 Qed.
-
 
 (* For two states with equal reveal_end and bidding_end, executing aux_compute with those states results in equal bidding_end and reveal_end *)
 Lemma aux_compute_time_eq_state: forall refund prev_state prev_state' caller caller_bids values fakes secrets to_refund updated_state,
@@ -98,7 +119,7 @@ Proof.
 Qed.
 
 (* reveal_end is always greater than bidding_end *)
-Theorem reveal_always_greater_than_bidding : forall bstate caddr,
+Lemma reveal_always_greater_than_bidding : forall bstate caddr,
   reachable bstate ->
   env_contracts bstate caddr = Some (contract : WeakContract) ->
   exists cstate,
@@ -123,15 +144,343 @@ Proof. intros.
     destruct_action_eval; auto.
 Qed.
 
-(* User can put all his money in pending at some point if he is not the highest bidder.
-   Additional requirement for this is that the slot of the chain has not reached bidding_end yet. :
-*)
+Definition transfer_acts_to addr acts :=
+    filter (fun a => match a with
+                     | act_transfer to _ => (to =? addr)%address
+                     | _ => false
+                     end) acts.
+
+Definition transfer_acts_amount_sum_to addr acts :=
+  let transfer_acts_to_addr := transfer_acts_to addr acts in
+  sumZ (fun ta => act_body_amount ta) transfer_acts_to_addr.
+
+(* For aux_compute with singleton input arrays, the refund should be deposit of the bid if not highest bidder *)
+Lemma aux_compute_for_single_bid_refunds_not_highest_bid : forall user prev_state b v f s refund new_state,
+  find_bids_or_empty user prev_state.(bids) = [b] ->
+  (v <=? prev_state.(highest_bid))%Z = true ->
+  all_hashes_are_satisfied [b] [v] [f] [s] ->
+  aux_compute_refund 0 prev_state user [b] [v] [f] [s] = Some (refund, new_state) ->
+  (refund)%Z = b.(deposit).
+Proof.
+  intros * user_bids not_highest hashes_satisfied aux_some.
+  inversion hashes_satisfied. clear H2 H H0 x l.
+  unfold aux_compute_refund in *. rewrite H1 in aux_some.
+  unfold place_bid in *. rewrite not_highest in aux_some.
+  cbn in *. inversion aux_some. cbn in *. easy. 
+Qed.
+
+(* For aux_compute with singleton input arrays, the refund should be deposit-value of the bid if highest bidder, bid is not fake, and the value is valid *)
+Lemma aux_compute_for_single_bid_refunds_highest_bid : forall user prev_state b v f s refund new_state,
+  find_bids_or_empty user prev_state.(bids) = [b] ->
+  (v <=? prev_state.(highest_bid))%Z = false /\ f = false /\ (b.(deposit) <? v = false)%Z->
+  all_hashes_are_satisfied [b] [v] [f] [s] ->
+  aux_compute_refund 0 prev_state user [b] [v] [f] [s] = Some (refund, new_state) ->
+  refund = (b.(deposit) - v)%Z.
+Proof.
+  intros * user_bids (is_highest & not_fake & invalid_value) hashes_satisfied aux_some.
+  inversion hashes_satisfied. clear H2 H H0 x l.
+  unfold aux_compute_refund in *. rewrite H1 in aux_some.
+  unfold place_bid in *. rewrite is_highest, not_fake, invalid_value in aux_some.
+  cbn in *. inversion aux_some. easy. 
+Qed.
+
+(* aux_compute_refund computes correctly for sequence. *)
+Lemma aux_compute_refund_correct_for_sequence : forall user new_state_single refund_single refund new_state prev_state b bids v values f fakes s secrets,
+  aux_compute_refund 0 prev_state user [b] [v] [f] [s] = Some (refund_single, new_state_single) ->
+  aux_compute_refund refund_single new_state_single user bids values fakes secrets = Some (refund, new_state) ->
+  aux_compute_refund 0 prev_state user (b::bids) (v::values) (f::fakes) (s::secrets) = Some (refund, new_state).
+Proof.
+  intros * H1 H2.
+  unfold aux_compute_refund in *; fold aux_compute_refund in *.
+  destruct ((b.(blinded_bid) =? hash_bid v f s)%positive).
+  - unfold place_bid in *.
+    destruct (orb (orb (v <=? highest_bid prev_state)%Z f) (deposit b <? v)%Z);
+    cbn in *; inversion H1; easy.
+  - easy.
+Qed.
+  
+(*aux_compute_refund 0 prev_state user (b::bids) (v::values) (f::fakes) (s::secrets) = Some (refund, new_state) ->
+aux_compute_refund 0 prev_state user bids values fakes secrets = Some (refund, new_state) ->*)
+
+Open Scope Z.
+(* aux_compute_refund correct for any refund value *)
+Lemma aux_compute_refund_correct : forall prev_state refund new_state user bids values fakes secrets start_refund z,
+  aux_compute_refund z prev_state user bids values fakes secrets = Some (refund, new_state) ->
+  aux_compute_refund (start_refund + z) prev_state user bids values fakes secrets = Some ((refund + start_refund)%Z, new_state).
+Proof.
+  intros * H.
+  generalize dependent z;
+  generalize dependent prev_state;
+  generalize dependent secrets;
+  generalize dependent fakes;
+  generalize dependent values.
+  induction bids as [|b bids'];
+  destruct values as [|v values'];
+  destruct fakes as [|f fakes'];
+  destruct secrets as [|s secrets'];
+  intros * H;
+  try discriminate; unfold aux_compute_refund in *. 
+  - inversion H. easy.
+  - fold aux_compute_refund in *.
+    destruct (b.(blinded_bid) =? hash_bid v f s)%positive; try easy.
+    cbn in *. unfold place_bid in *.
+    destruct (orb (orb (v <=? highest_bid prev_state)%Z f) (deposit b <? v)%Z);
+    cbn in *.
+    + remember (add_bid_get_state prev_state user
+    (setter_from_getter_Bid_deposit (fun _ : Amount => 0%Z) b)) as updated_state.
+    rewrite <- Zminus_0_l_reverse in H.
+    Locate add_assoc.
+    rewrite <- (Z.add_assoc start_refund z b.(deposit)).
+    rewrite <- Zminus_0_l_reverse.
+    now apply (IHbids' values' fakes' secrets' updated_state (z + b.(deposit))%Z).
+    + remember (add_bid_get_state
+      (setter_from_getter_State_highest_bidder
+        (fun _ : option Address => Some user)
+        (setter_from_getter_State_highest_bid (fun _ : Amount => v)
+            (setter_from_getter_State_pending_returns
+              (fun _ : FMap Address Amount =>
+                match highest_bidder prev_state with
+                | Some highest_bidder' =>
+                    FMap.add highest_bidder'
+                      (find_pending_or_zero highest_bidder'
+                        (pending_returns prev_state) + 
+                      highest_bid prev_state)%Z (pending_returns prev_state)
+                | None => pending_returns prev_state
+                end) prev_state))) user
+      (setter_from_getter_Bid_deposit (fun _ : Amount => 0%Z) b)) as updated_state.
+      assert (rewriting : (start_refund + z + b.(deposit) - v) = start_refund + (z + b.(deposit) - v )). { lia. }
+      rewrite rewriting.
+      now apply (IHbids' values' fakes' secrets' updated_state (z + b.(deposit) - v)%Z).
+Qed.
 
 
-Definition all_hashes_are_satisfied caller_bids values fakes secrets : Prop :=
-  let zipped_info := zip (zip (zip caller_bids values) fakes) secrets in
-  Forall (fun '(caller_bid, value, fake, secret) => (caller_bid.(blinded_bid) =? hash_bid value fake secret)%positive = true) zipped_info.
+(* When calling reveal with no highest_bid and correct hashes for all bids, reveal should transfer the sum of the deposit from the bids to the caller (user).  *)
+Lemma reveal_tranfers_money_correctly_on_no_highest_bid : forall chain ctx prev_state new_state new_acts values fakes secrets,
+  let user := ctx.(ctx_from) in
+  let user_bids := (find_bids_or_empty user prev_state.(bids)) in
+  BlindAuction.receive chain ctx prev_state (Some (reveal values fakes secrets)) = Some (new_state, new_acts) ->
+  Forall (fun val => (val <=? prev_state.(highest_bid))%Z = true) values ->
+  all_hashes_are_satisfied user_bids values fakes secrets ->
+  new_acts = [act_transfer user (sumZ deposit user_bids)].
+Proof.
+  (* *)
+  intros * reveal_some no_highest_bid valid_hashes.
+  subst user; subst user_bids.
+  cbn in *. unfold compute_refund in *.
+  destruct (find_bids_or_empty ctx.(ctx_from) prev_state.(bids)) as [|b bids'];
+  destruct values as [|v values'];
+  destruct fakes as [|f fakes'];
+  destruct secrets as [| s secrets']; receive_simpl2 reveal_some; try discriminate.
+  - admit.
+  - unfold aux_compute_refund in *; fold aux_compute_refund in *.
+    inversion valid_hashes; clear x l H H0.
+    rewrite H1 in reveal_some. cbn in *.
+    unfold place_bid in *.
+    inversion no_highest_bid; clear x l H H0; cbn in *.
+    rewrite H3 in reveal_some. cbn in *.
+    destruct aux_compute_refund; try discriminate.
+    - 
+  destruct (aux_compute_refund) eqn:E; try discriminate.
+  receive_simpl2 reveal_some; try discriminate.
+  - admit.
+  - receive_simpl2 reveal_some; try discriminate. ad 
+  (* *)
+  intros *.
+  subst user; subst user_bids.
+  cbn in *. unfold compute_refund in *.
+  generalize dependent prev_state;
+  generalize dependent secrets;
+  generalize dependent fakes;
+  generalize dependent values.
+  induction values as [|v values'];
+  intros * reveal_some no_highest_bid valid_hashes.
+  - receive_simpl2 reveal_some; try discriminate. admit.
+  (**->*)
 
+  (*<-*)
+  - apply (IHvalues' (fakes) (secrets) prev_state).  
+   destruct (find_bids_or_empty ctx.(ctx_from) prev_state.(bids)) as [|b bids'];
+    destruct fakes as [|f fakes'];
+    destruct secrets as [| s secrets']; try (receive_simpl2 reveal_some; discriminate).
+    remember (prev_state <| bids := (FMap.add ctx.(ctx_from) (b::bids') prev_state.(bids) ) |> ) as prev_state'.
+    rewrite (IHvalues' (fakes') (secrets') prev_state).
+    + destruct (aux_compute_refund); try discriminate. auto. admit.
+
+    
+    + unfold setter_from_getter_State_bids in *;
+      unfold set_State_bids in *.
+      unfold find_bids_or_empty. rewrite Heqprev_state'. cbn in *.
+      rewrite FMap.find_add. cbn in *. reflexivity.
+    + unfold setter_from_getter_State_bids in *;
+      unfold set_State_bids in *.
+      unfold find_bids_or_empty. rewrite Heqprev_state'. cbn in *.
+      rewrite FMap.find_add.
+      rewrite FMap.add_add.
+
+      receive_simpl2 reveal_some; try discriminate.
+      cbn in *. subst. cbn in *. easy.
+      
+
+       easy.
+      subst. cbn in *.
+      rewrite FMap.find_add.
+      easy.
+  - destruct (find_bids_or_empty ctx.(ctx_from) prev_state.(bids)) as [|b bids'];
+    destruct fakes as [|f fakes'];
+    destruct secrets as [| s secrets'];
+    receive_simpl2 reveal_some; try discriminate.
+    unfold aux_compute_refund in *; fold aux_compute_refund in *.
+    inversion valid_hashes; clear H H0 x l. rewrite H1 in *.
+    unfold place_bid in *; cbn in *.
+    inversion no_highest_bid; clear x l H H0. rewrite H3 in reveal_some; cbn in *.
+    remember (prev_state <| bids := (FMap.add ctx.(ctx_from) (b::bids') prev_state.(bids) ) |> ) as prev_state'.
+    setoid_rewrite (IHvalues' fakes' secrets' prev_state'); clear IHvalues'.
+    * unfold setter_from_getter_State_bids in *;
+      unfold set_State_bids in *.
+      unfold find_bids_or_empty. rewrite Heqprev_state'. cbn in *.
+      rewrite FMap.find_add. cbn in *. reflexivity.
+    * unfold setter_from_getter_State_bids in *;
+      unfold set_State_bids in *.
+    receive_simpl; try discriminate.  
+      rewrite (find_add ctx.(ctx_from) (b::bids') (prev_state.(bids))).
+     try discriminate. unfold find_bids_or_empty. subst. cbn in *.
+      destruct Heqprev_state'.
+       destruct prev_state; destruct prev_state'. cbn in *.
+
+      unfold setter_from_getter_State_bids in *;
+      unfold set_State_bids in *.
+      unfold find_bids_or_empty.
+        destruct Heqprev_state'.
+
+      unfold setter_from_getter_State_bids in *;
+      unfold set_State_bids in *.
+      cbn in
+      unfold find_bids_or_empty. cbn in *. easy. unfold prev_state'. cbn in *. admit.
+      * admit.
+      * admit.
+      * admit.  
+      rewrite (IHvalues' fakes' secrets' new_ac) try easy.
+      * 
+      remember (highest_bid (setter_from_getter_State_bids(fun _ : FMap Address Bids => 
+      FMap.add (ctx_from ctx) [] (bids prev_state)) prev_state)) as hb_state.
+      inversion no_highest_bid; clear x l H H0.
+      unfold setter_from_getter_State_bids in Heqhb_state;
+      unfold set_State_bids in Heqhb_state.
+      cbn in *. rewrite Heqhb_state in reveal_some. rewrite H3 in reveal_some.
+      cbn in *. erewrite IHvalues'; try assumption.
+      
+  - receive_simpl2 reveal_some; try discriminate.
+    + admit.
+    +
+    unfold aux_compute_refund in reveal_some; fold aux_compute_refund in reveal_some.
+    inversion valid_hashes. clear x l0 H H0. rewrite H1 in reveal_some.
+    unfold place_bid in *.
+    remember (highest_bid (setter_from_getter_State_bids(fun _ : FMap Address Bids => 
+    FMap.add (ctx_from ctx) [] (bids prev_state)) prev_state)) as hb_state.
+    inversion no_highest_bid; clear x l0 H H0.
+    unfold setter_from_getter_State_bids in Heqhb_state;
+    unfold set_State_bids in Heqhb_state.
+    cbn in *. rewrite Heqhb_state in reveal_some. rewrite H3 in reveal_some.
+    cbn in *. receive_simpl2 reveal_some; cbn in *.
+    + receive_simpl2 reveal_some. inversion reveal_some.
+    rewrite (IHl values fakes secrets (act_transfer ctx.(ctx_from) a.(deposit)::new_acts)); try assumption.
+    + cbn in *. destruct (ctx.(ctx_from) =? ctx.(ctx_from))%address; try discriminate.
+    * cbn in *. easy.  admit.
+    +  
+    cbn in *.
+
+
+  receive_simpl2 reveal_some; try discriminate.
+  cbn in *.
+  generalize dependent values.
+  generalize dependent fakes.
+  generalize dependent secrets.
+  generalize dependent new_acts.
+  generalize dependent new_state.
+  cbn in *.
+  induction (find_bids_or_empty ctx.(ctx_from) prev_state.(bids));
+  intros * receive_some no_highest_bid hashes_satisfied; cbn in *.
+  - admit.
+  - unfold compute_refund in *. receive_simpl2 receive_some; try discriminate.
+    destruct values; destruct fakes; destruct secrets; try discriminate.
+    destruct aux_compute_refund; try discriminate. inversion receive_some.
+    c
+
+  subst user; subst user_bids.
+  cbn in *.
+  generalize dependent prev_state.
+  generalize dependent fakes.
+  generalize dependent secrets.
+  generalize dependent new_state.
+  generalize dependent new_acts.
+  induction values; intros * no_pending receive_some (*hashes_satisfied*).
+  - admit.
+  - eapply IHvalues; try easy.
+    + admit.
+    + auto.  
+   destruct (find_bids_or_empty ctx.(ctx_from) prev_state.(bids)); destruct fakes; destruct secrets;
+  receive_simpl2 receive_some; try discriminate. cbn in *.
+  eapply IHvalues.
+  unfold compute_refund in *.
+  eapply IHvalues; try easy.
+  + admit.
+  + 
+  destruct compute_refund; try easy.
+  + cbn in *. admit.
+  + cbn in *.  
+  - unfold compute_refund in *. unfold aux_compute_refund in *.
+    inversion hashes_satisfied. rewrite H1 in receive_some.
+    cbn in *.
+  - inversion receive_some. inversion H0. destruct H0. admit. 
+  - cbn in *. inversion receive_some. admit. 
+  - inversion receive_some. admit.
+  - inversion receive_some. admit. 
+
+  intros chain ctx prev_state new_state new_acts values.
+  cbn in *. unfold compute_refund in *. induction values;
+
+  intros * no_pending receive_some hashes_satisfied.
+  - admit.
+  - 
+   eapply IHvalues; try easy.
+    + admit.
+    +   destruct (find_bids_or_empty ctx.(ctx_from) prev_state.(bids)); destruct fakes; destruct secrets;
+    receive_simpl2 receive_some; try discriminate.
+   eapply IHvalues; try easy.
+    + 
+   + 
+   +  easy.
+  destruct values; destruct fakes; destruct secrets; receive_simpl2 receive_some; try discriminate.
+    unfold aux_compute_refund in receive_some.
+    
+    clear IHl.
+  - destruct values; destruct fakes; destruct secrets; receive_simpl2 receive_some; try discriminate. 
+    unfold aux_compute_refund in *. inversion receive_some. cbn in *.
+    (* Why is it necessary to destruct? *)
+    cbn. destruct (ctx.(ctx_from) =? ctx.(ctx_from))%address; easy.
+  - cbn in *.
+    clear IHl. receive_simpl2 receive_some; try discriminate. cbn in *.
+    receive_simpl2 IHl; try discriminate.
+    unfold aux_compute_refund in *.
+    destruct values; destruct fakes; destruct secrets; receive_simpl2 receive_some; try discriminate.
+    unfold aux_compute_refund in *. inversion hashes_satisfied. rewrite H1 in receive_some.
+    cbn in *. cbn in hashes_satisfied. cbn in *. pose proof (IHl receive_some hashes_satisfied).apply IHl in receive_some. easy. unfold aux_compute_refund in *. clear IHl.
+  - admit. 
+  
+  intros * no_pending receive_some hashes_satisfied. subst user; subst user_bids.
+  cbn in *. unfold compute_refund in *. induction (find_bids_or_empty ctx.(ctx_from) prev_state.(bids)).
+  - destruct values; destruct fakes; destruct secrets; receive_simpl2 receive_some; try discriminate. 
+    unfold aux_compute_refund in *. inversion receive_some. cbn in *.
+    (* Why is it necessary to destruct? *)
+    cbn. destruct (ctx.(ctx_from) =? ctx.(ctx_from))%address; easy.
+  - cbn in *.
+    clear IHl. receive_simpl2 receive_some; try discriminate. cbn in *.
+    receive_simpl2 IHl; try discriminate.
+    unfold aux_compute_refund in *.
+    destruct values; destruct fakes; destruct secrets; receive_simpl2 receive_some; try discriminate.
+    unfold aux_compute_refund in *. inversion hashes_satisfied. rewrite H1 in receive_some.
+    cbn in *. cbn in hashes_satisfied. cbn in *. pose proof (IHl receive_some hashes_satisfied).apply IHl in receive_some. easy. unfold aux_compute_refund in *. clear IHl.
+  - admit. 
 (*Lemma can_always_retrieve_all_bids_if_not_highest_bidder :
     forall bstate (user caddr creator : Address) (reward deposit : Amount) values fakes secrets,
     address_is_contract creator = false ->
