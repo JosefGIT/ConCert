@@ -98,10 +98,12 @@ Inductive Msg :=
 
 Definition get_item_option itemId (listings : listings_type) := FMap.find itemId listings.
 Definition get_purchase_option purchaseId (purchases : purchases_type) := FMap.find purchaseId purchases.
+
 (*  *)
 Definition TEMP_keccak256 (n1: nat) (n2 : Address) : N := 2%N.
 
-(* TODO: THIS FUNCTION NEEDS TO RETURN THE NEW itemId. How to do this? *)
+
+(* In the original code, this function returns [purchaseId]. However this is not possible (or necessary) in ConCert. *)
 Definition buyer_request_purchase_action (chain : Chain) (ctx : ContractCallContext) (state : State)
                                          (itemId : nat) (notes : string)
                                          : option (State * list ActionBody) :=
@@ -189,9 +191,29 @@ Definition buyer_call_timeout_action ctx state chain purchaseId
   Some (state <| purchases := updated_purchases|>,
         [act_transfer (purchase.(buyer)) balance]).
 
+
+(* TEMP HASH FUNCTION - Not cryptographically secure at all! *)
+Definition hash_bid (id : N) (buyer_bit : bool) (nonce : N) : N :=
+    Npos (countable.encode (id, buyer_bit, nonce)).
+Arguments hash_bid : simpl never.
         (* TODO !!*)
-(* Definition buyer_open_commitment_action ctx state purchaseId buyer_bit nonce
-  : option (State * list ActionBody) := *)
+Print get_item_option.
+Definition buyer_open_commitment_action ctx state purchaseId buyer_bit nonce
+  : option (State * list ActionBody) :=
+  let current_purchases := state.(purchases) in
+  do purchase <- get_purchase_option purchaseId current_purchases;
+  do required_true (ctx.(ctx_from) =? purchase.(buyer))%address;
+  do match purchase_state purchase with
+     | counter => Some tt
+     | _ => None
+     end;
+  do required_true ((hash_bid purchaseId buyer_bit nonce =? purchase.(commit))%N); (* TMP TODO!! Use hashing! *)
+  let updated_purchase := purchase <| purchase_state := failed |> in
+  let updated_purchases := FMap.add purchaseId updated_purchase current_purchases in
+  let target_transaction := if (eqb purchase.(seller_bit) buyer_bit) then state.(seller) else purchase.(buyer) in
+  do item <- get_item_option purchase.(item) state.(listings);
+  Some (state <| purchases := updated_purchases |>,
+        [act_transfer target_transaction item.(item_value)]).
 
 Definition seller_call_timeout_action ctx state chain purchaseId
   : option (State * list ActionBody) :=
@@ -305,7 +327,7 @@ Definition receive (chain : Chain) (ctx : ContractCallContext)
       | buyer_confirm_delivery id => buyer_confirm_delivery_action ctx state id
       | buyer_dispute_delivery id commitment => buyer_dispute_delivery_action ctx state chain id commitment
       | buyer_call_timeout id => buyer_call_timeout_action ctx state chain id
-      | buyer_open_commitment id buyer_bit nonce => None (* TODO!! *)
+      | buyer_open_commitment id buyer_bit nonce => buyer_open_commitment_action ctx state id buyer_bit nonce
       | seller_call_timeout id => seller_call_timeout_action ctx state chain id
       | seller_reject_contract id => seller_reject_contract_action ctx state id
       | seller_accept_contract id => seller_accept_contract_action ctx state chain id
