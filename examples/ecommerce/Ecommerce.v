@@ -99,9 +99,10 @@ Inductive Msg :=
 Definition get_item_option itemId (listings : listings_type) := FMap.find itemId listings.
 Definition get_purchase_option purchaseId (purchases : purchases_type) := FMap.find purchaseId purchases.
 
-(*  *)
-Definition TEMP_keccak256 (n1: nat) (n2 : Address) : N := 2%N.
-
+(* TEMP HASH FUNCTION - Not cryptographically secure at all! *)
+Definition hash_bid2 (n : nat) (addr : Address) : N :=
+    Npos (countable.encode (n, addr)).
+Arguments hash_bid2 : simpl never.
 
 (* In the original code, this function returns [purchaseId]. However this is not possible (or necessary) in ConCert. *)
 Definition buyer_request_purchase_action (chain : Chain) (ctx : ContractCallContext) (state : State)
@@ -113,7 +114,7 @@ Definition buyer_request_purchase_action (chain : Chain) (ctx : ContractCallCont
   do requested_item <- get_item_option itemId current_listings; (* If item with itemId does not exist, do nothing *)
   do required_true ((item_value requested_item) =? offer_money);
   let current_slot := current_slot chain in
-  let purchaseId := TEMP_keccak256 current_slot buyer in
+  let purchaseId := hash_bid2 current_slot buyer in
   let purchase :=
     {|
       commit := 0;
@@ -344,7 +345,7 @@ Definition init (chain : Chain) (ctx : ContractCallContext) (setup : Setup)
   let seller := ctx_from ctx in
   let listings := setup_listings setup in
   let timeout := setup_timeout setup in
-  do required_true (timeout <? 0)%nat;
+  do required_true (0 <? timeout)%nat;
   Some {|
     seller := seller;
     listings := listings;

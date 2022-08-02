@@ -32,17 +32,6 @@ Section EcommerceTestSetup.
 
   Definition deploy_ecommerce := create_deployment 0 Ecommerce.contract setup.
 
-  (* DEL! ->*)
-  From ConCert.Examples.BlindAuction Require Import BlindAuction.
-  Definition blindauction_setup :=  {|
-    bidding_time := 10;
-    reveal_time := 5;
-    beneficiary_address := seller;
-  |}.
-  Definition deploy_blindauction := create_deployment 0 BlindAuction.contract blindauction_setup.
- (*<-  DEL! *)
-  Check deploy_blindauction.
-  Check deploy_ecommerce.
   Definition ecommerce_chainbuilder :=
     unpack_result (TraceGens.add_block empty_chain
     [
