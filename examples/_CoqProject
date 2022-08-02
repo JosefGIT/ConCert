@@ -138,3 +138,6 @@ blindauction/tests/BlindAuctionGens.v
 
 -Q ecommerce ConCert.Examples.Ecommerce
 ecommerce/Ecommerce.v
+ecommerce/tests/EcommercePrinters.v
+ecommerce/tests/EcommerceTests.v
+ecommerce/tests/EcommerceGens.v
