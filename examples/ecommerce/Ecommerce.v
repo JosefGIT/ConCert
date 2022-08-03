@@ -18,7 +18,7 @@ From ConCert.Utils Require Import RecordUpdate.
 Definition required_true (b: bool) := if b then Some tt else None.
 Definition required_false (b: bool) := if b then None else Some tt.
 
-Section ECommerce.
+Section Ecommerce.
 
 Open Scope Z.
 Context `{Base : ChainBase}.
@@ -35,7 +35,21 @@ Inductive PurchaseState :=
   | dispute
   | counter
   | failed.
-  
+
+Definition purchase_state_eq (s1 s2 : PurchaseState) : bool :=
+  match s1, s2 with
+  | null, null
+  | requested, requested
+  | accepted, accepted
+  | rejected, rejected
+  | delivered, delivered
+  | completed, completed
+  | dispute, dispute
+  | counter, counter
+  | failed,failed => true
+  | _, _ => false
+  end.
+
 Record Item :=
   build_item {
     item_value : Amount;
@@ -162,10 +176,7 @@ Definition buyer_dispute_delivery_action ctx state chain purchaseId commitment
           : option (State * list ActionBody) :=
   let current_purchases := purchases state in
   do purchase <- get_purchase_option purchaseId current_purchases;
-  do match purchase_state purchase with
-     | delivered => Some tt
-     | _ => None
-     end;
+  do required_true (purchase_state_eq purchase.(purchase_state) delivered);
   do required_true (ctx.(ctx_from) =? purchase.(buyer))%address;
   let money_sent := ctx.(ctx_amount) in
   do disputed_item <- get_item_option purchase.(item) state.(listings);
@@ -247,14 +258,12 @@ Definition seller_reject_contract_action ctx state purchaseId
   Some (state <| purchases := updated_purchases|>,
         [act_transfer (purchase.(buyer)) balance]).
 
+
 Definition seller_accept_contract_action ctx state chain purchaseId
   : option (State * list ActionBody) :=
   let current_purchases := purchases state in
   do purchase <- get_purchase_option purchaseId current_purchases;
-  do match purchase_state purchase with
-     | requested => Some tt
-     | _ => None
-     end;
+  do required_true (purchase_state_eq purchase.(purchase_state) requested);
   do required_true (ctx.(ctx_from) =? state.(seller))%address;
   let updated_purchase := purchase <| purchase_state := accepted |>
                                    <| last_block := chain.(current_slot) |> in 
@@ -389,4 +398,4 @@ Global Instance State_serializable : Serializable State :=
 
 Definition contract : Contract Setup Msg State := 
     build_contract init receive.
-End ECommerce.
+End Ecommerce.
