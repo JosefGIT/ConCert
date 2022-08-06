@@ -17,7 +17,8 @@ Context `{Base : ChainBase}.
 Ltac receive_simpl_step g :=
   match type of g with
   | context[get_purchase_option] => unfold get_purchase_option in g; cbn in g
-  | context[FMap.find _ _] => destruct (FMap.find _ _) eqn:?; cbn in g
+  | context[get_item_option] => unfold get_item_option in g; cbn in g
+  | context[FMap.find _ ?v] => destruct (FMap.find _ v) eqn:?; cbn in g
   | context[setter_from_getter_State_purchases] => unfold setter_from_getter_State_purchases in g; cbn in g
   | context[set_State_purchases] => unfold set_State_purchases in g; cbn in g
   | context[setter_from_getter_Purchase_last_block] => unfold setter_from_getter_Purchase_last_block in g; cbn in g
@@ -30,6 +31,7 @@ Tactic Notation "receive_simpl" constr(g) := cbn in g; repeat (receive_simpl_ste
 Ltac receive_simpl_goal_step :=
   match goal with
   | |- context[get_purchase_option] => unfold get_purchase_option
+  | |- context[get_item_option] => unfold get_item_option
   | |- context[purchase_state_eq] => unfold purchase_state_eq
   | |- context[setter_from_getter_State_purchases] => unfold setter_from_getter_State_purchases
   | |- context[set_State_purchases] => unfold set_State_purchases
@@ -69,6 +71,21 @@ Lemma buyer_abort_correct : forall chain ctx prev_state new_state new_acts id pu
 Proof.
     Admitted.
 
+
+
+
+
+
+
+Ltac receive_simpl_step2 g :=
+  match type of g with
+  | context[FMap.find ?k ?v] => destruct (FMap.find k v) eqn:?; cbn in g
+  end. 
+
+Tactic Notation "receive_simpl2" constr(g) := cbn in g; repeat (receive_simpl_step2 g); try discriminate.
+
+
+  
 Lemma purchase_state_eq_correct : forall (state1 state2 : PurchaseState),
   state1 = state2 <-> purchase_state_eq state1 state2 = true.
 Proof.
@@ -97,7 +114,7 @@ Lemma seller_accept_contract_correct : forall chain ctx prev_state new_state new
   /\ new_acts = [].
 Proof.
   intros *. split.
-  - intros receive_some.
+  - intros receive_some. cbn in *.
     receive_simpl receive_some.
     remember ({|
       commit := commit p;
@@ -137,12 +154,12 @@ Lemma buyer_dispute_delivery_correct : forall chain ctx prev_state new_state new
   /\ (ctx.(ctx_from) =? purchase.(buyer))%address = true
   /\ purchase.(purchase_state) = delivered
   /\ FMap.find purchase.(item) prev_state.(listings) = Some _item
-  /\ _item.(item_value) = ctx.(ctx_amount)
+  /\ (ctx.(ctx_amount) =? _item.(item_value)) = true
   /\ updated_purchase.(purchase_state) = dispute
   /\ updated_purchase.(last_block) = chain.(current_slot)
   /\ new_state.(purchases) = FMap.add id updated_purchase prev_state.(purchases)
   (* These fields should stay constant *)
-  /\ purchase.(commit) = updated_purchase.(commit)
+  /\ commitment = updated_purchase.(commit)
   /\ purchase.(item) = updated_purchase.(item)
   /\ purchase.(seller_bit) = updated_purchase.(seller_bit)
   /\ purchase.(notes) = updated_purchase.(notes)
@@ -155,8 +172,37 @@ Lemma buyer_dispute_delivery_correct : forall chain ctx prev_state new_state new
   .
 Proof.
   intros *. split.
-  - intros receive_some. receive_simpl receive_some.
-    + admit.
-    + 
+  - intros receive_some.
+    receive_simpl receive_some.
+    remember ({|
+    commit := commitment;
+    last_block := current_slot chain;
+    item := item p;
+    seller_bit := seller_bit p;
+    notes := notes p;
+    purchase_state := dispute;
+    buyer := buyer p |})
+    as updated_purchase.
+    repeat split; try now inversion Hequpdated_purchase; try now inversion receive_some.
+    exists p, updated_purchase, i.
+    repeat split; try now inversion Hequpdated_purchase.
+    + now apply purchase_state_eq_correct in E.
+    + now inversion receive_some.
+  - intros ([purchase [updated_purchase [_item 
+            (purchase_found & purchase_from & state_delivered & item_found & item_val & upd_purchase_from & block_current & upd_purchases & com & const_item & const_seller_bit & const_notes & const_buyer)
+  ]]] & const_listings & const_seller & const_timeout & acts_empty).
+  receive_simpl_goal.
+  setoid_rewrite purchase_found.
+  rewrite state_delivered, purchase_from; cbn.
+  setoid_rewrite item_found.
+  rewrite item_val; cbn.
+  rewrite acts_empty.
+
+  rewrite const_item, const_seller_bit, const_notes, const_buyer,
+          const_listings, const_seller, const_timeout,
+          com, <- upd_purchase_from, <- block_current.
+  destruct updated_purchase; destruct new_state;
+  now setoid_rewrite <- upd_purchases.
+Qed.
 
 End Theories.
