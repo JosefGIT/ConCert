@@ -2,17 +2,23 @@ From ConCert.Examples.Ecommerce Require Import Ecommerce.
 From ConCert.Execution Require Import BuildUtils.
 From ConCert.Utils Require Import Automation.
 From Coq Require Import ZArith.
+
 From ConCert.Execution Require Import Serializable.
 Require Import Blockchain.
 Require Import Containers.
 Require Import Extras.
 From ConCert.Utils Require Import RecordUpdate.
+From Coq Require Import Bool.
 From Coq Require Import Lia.
 From Coq Require Import List.
 Import ListNotations.
 Section Theories.
 
 Context `{Base : ChainBase}. 
+
+Arguments hash_bid : simpl never.
+
+Arguments hash_bid2 : simpl never.
 
 Ltac receive_simpl_step g :=
   match type of g with
@@ -23,6 +29,10 @@ Ltac receive_simpl_step g :=
   | context[set_State_purchases] => unfold set_State_purchases in g; cbn in g
   | context[setter_from_getter_Purchase_last_block] => unfold setter_from_getter_Purchase_last_block in g; cbn in g
   | context[set_Purchase_last_block] => unfold set_Purchase_last_block in g; cbn in g
+  | context[setter_from_getter_Purchase_purchase_state] => unfold setter_from_getter_Purchase_purchase_state in g; cbn in g
+  | context[set_Purchase_purchase_state] => unfold set_Purchase_purchase_state in g; cbn in g
+  | context[setter_from_getter_Purchase_seller_bit] => unfold setter_from_getter_Purchase_seller_bit in g; cbn in g
+  | context[set_Purchase_seller_bit] => unfold set_Purchase_seller_bit in g; cbn in g
   | context[required_true ?cond] => destruct cond eqn:?E; inversion E; cbn in g
   end. 
 
@@ -37,6 +47,10 @@ Ltac receive_simpl_goal_step :=
   | |- context[set_State_purchases] => unfold set_State_purchases
   | |- context[setter_from_getter_Purchase_last_block] => unfold setter_from_getter_Purchase_last_block
   | |- context[set_Purchase_last_block] => unfold set_Purchase_last_block
+  | |- context[setter_from_getter_Purchase_purchase_state] => unfold setter_from_getter_Purchase_purchase_state
+  | |- context[set_Purchase_purchase_state] => unfold set_Purchase_purchase_state
+  | |- context[setter_from_getter_Purchase_seller_bit] => unfold setter_from_getter_Purchase_seller_bit
+  | |- context[set_Purchase_seller_bit] => unfold set_Purchase_seller_bit
   end. 
 
 Tactic Notation "receive_simpl_goal" := cbn; repeat (receive_simpl_goal_step; cbn).
@@ -47,34 +61,6 @@ Open Scope Z.
 
 (* seller and timeout are constant .. *)
 (* listings price must never change - not correct in the smart contract implementation! *)
-(* Nothing may change in a Purchase except its state and last_block *)
-(*Lemma test : forall (z1 z2 z3 : Z),
- z2 = z2 <->
- (z1 = z1 -> z2 = z2).
-Proof.
-  intros *. split.
-  - admit.
-  - intros. apply and in H. destruct H.
-    +  apply H. destruct H.
-    +  Admitted.*)
-
-(* For valid receive buyer_abort, correct conditions hold *)
-Lemma buyer_abort_correct : forall chain ctx prev_state new_state new_acts id purchase updated_purchase,
-    Ecommerce.receive chain ctx prev_state (Some (buyer_abort id)) = Some (new_state, new_acts) <->
-       (FMap.find id prev_state.(purchases) = Some (purchase : Purchase)
-    -> ctx.(ctx_from) = purchase.(buyer)
-    /\ purchase.(purchase_state) = requested)
-    /\ (FMap.find id new_state.(purchases) = Some (updated_purchase)
-    -> updated_purchase.(purchase_state) = failed).
-    (* Another condition that should be added is that new_acts contains act_transfer with the
-       price of the purchase ctx_from. However this does not hold in the smart contract. *)
-Proof.
-    Admitted.
-
-
-
-
-
 
 
 Ltac receive_simpl_step2 g :=
@@ -83,7 +69,6 @@ Ltac receive_simpl_step2 g :=
   end. 
 
 Tactic Notation "receive_simpl2" constr(g) := cbn in g; repeat (receive_simpl_step2 g); try discriminate.
-
 
   
 Lemma purchase_state_eq_correct : forall (state1 state2 : PurchaseState),
@@ -203,6 +188,202 @@ Proof.
           com, <- upd_purchase_from, <- block_current.
   destruct updated_purchase; destruct new_state;
   now setoid_rewrite <- upd_purchases.
+Qed.
+
+Lemma buyer_open_commitment_correct : forall chain ctx prev_state new_state new_acts id buyer_bit nonce,
+  Ecommerce.receive chain ctx prev_state (Some (buyer_open_commitment id buyer_bit nonce)) = Some (new_state, new_acts)
+  <->
+  (exists purchase updated_purchase _item,
+     FMap.find id prev_state.(purchases) = Some purchase
+  /\ FMap.find id new_state.(purchases) = Some updated_purchase
+  /\ FMap.find purchase.(item) prev_state.(listings) = Some _item
+  /\ new_state.(purchases) = FMap.add id updated_purchase prev_state.(purchases)
+  (* Only state should change in the targeted purchase *)
+  /\ failed = updated_purchase.(purchase_state)
+  /\ purchase.(last_block) = updated_purchase.(last_block)
+  /\ purchase.(commit) = updated_purchase.(commit)
+  /\ purchase.(item) = updated_purchase.(item)
+  /\ purchase.(seller_bit) = updated_purchase.(seller_bit)
+  /\ purchase.(notes) = updated_purchase.(notes)
+  /\ purchase.(buyer) = updated_purchase.(buyer)
+  
+  /\ purchase.(purchase_state) = counter
+  /\ hash_bid id buyer_bit nonce = purchase.(commit)
+  /\ (ctx.(ctx_from) =? purchase.(buyer))%address = true
+  /\ (eqb purchase.(seller_bit) buyer_bit = true
+     -> new_acts = [act_transfer purchase.(buyer) (2*_item.(item_value))])
+  /\ (eqb purchase.(seller_bit) buyer_bit = false
+     -> new_acts = [act_transfer prev_state.(seller) (2*_item.(item_value))])
+  )
+  /\ prev_state.(listings) = new_state.(listings)
+  /\ prev_state.(seller) = new_state.(seller)
+  /\ prev_state.(timeout) = new_state.(timeout)
+  .
+  intros *. split.
+  - intros receive_some.
+    receive_simpl receive_some.
+    remember ({|
+    commit := commit p;
+    last_block := last_block p;
+    item := item p;
+    seller_bit := seller_bit p;
+    notes := notes p;
+    purchase_state := failed;
+    buyer := buyer p |})
+    as updated_purchase.
+    repeat split; try now inversion Hequpdated_purchase; try now inversion receive_some.
+    exists p, updated_purchase, i.
+    repeat split; try now inversion Hequpdated_purchase.
+    + inversion receive_some; cbn. apply FMap.find_add.
+    + now inversion receive_some.
+    + now apply purchase_state_eq_correct in E0.
+    + now apply N.eqb_eq in E1.
+    + intros eq_bits. inversion receive_some. rewrite eq_bits. now rewrite H0.
+    + intros neq_bits. inversion receive_some. now rewrite neq_bits. 
+  - intros ([purchase [updated_purchase [_item
+            (purchase_found & updated_purchase_found & item_found & purchases_updated & upd_purchase_failed &
+             const_block & const_commit & const_item & const_seller_bit & const_notes & const_buyer &
+             purchase_counter & correct_hash & ctx_from_buyer & eq_bits & neq_bits)]]] &
+             const_listings & const_seller & const_timeout).
+    receive_simpl_goal.
+    setoid_rewrite purchase_found.
+    rewrite ctx_from_buyer; cbn.
+    rewrite purchase_counter; cbn.
+    apply N.eqb_eq in correct_hash; rewrite correct_hash; cbn.
+    setoid_rewrite item_found.
+    rewrite const_seller, const_listings, const_timeout.
+    rewrite const_commit, const_block, const_item,
+            const_seller_bit,const_notes, const_buyer.
+    rewrite upd_purchase_failed.
+    destruct updated_purchase; destruct new_state; cbn in *. auto.
+    setoid_rewrite <- purchases_updated.  
+    rewrite const_seller_bit in eq_bits, neq_bits.
+    destruct (eqb seller_bit buyer_bit) eqn:E.
+    + rewrite eq_bits; easy.
+    + rewrite neq_bits; easy.
+Qed.
+
+Lemma seller_item_was_delivered_correct : forall chain ctx prev_state new_state new_acts id,
+  Ecommerce.receive chain ctx prev_state (Some (seller_item_was_delivered id)) = Some (new_state, new_acts)
+  <->
+  (exists purchase updated_purchase,
+      FMap.find id prev_state.(purchases) = Some purchase
+   /\ FMap.find id new_state.(purchases) = Some updated_purchase
+   /\ new_state.(purchases) = FMap.add id updated_purchase prev_state.(purchases)
+   /\ purchase.(purchase_state) = accepted
+   /\ updated_purchase.(purchase_state) = delivered
+   /\ updated_purchase.(last_block) = chain.(current_slot)
+   (* These should remain constant *)
+   /\ purchase.(commit) = updated_purchase.(commit)
+   /\ purchase.(item) = updated_purchase.(item)
+   /\ purchase.(seller_bit) = updated_purchase.(seller_bit)
+   /\ purchase.(notes) = updated_purchase.(notes)
+   /\ purchase.(buyer) = updated_purchase.(buyer))
+  /\ prev_state.(listings) = new_state.(listings)
+  /\ prev_state.(seller) = new_state.(seller)
+  /\ prev_state.(timeout) = new_state.(timeout)
+
+  /\ (ctx.(ctx_from) =? prev_state.(seller))%address = true
+  /\ new_acts = []
+  .
+Proof.
+  intros *. split.
+  - intros receive_some.
+    receive_simpl receive_some.
+    repeat split; try now inversion receive_some.
+    remember ({|
+    commit := commit p;
+    last_block := current_slot chain;
+    item := item p;
+    seller_bit := seller_bit p;
+    notes := notes p;
+    purchase_state := delivered;
+    buyer := buyer p |})
+    as updated_purchase.
+    exists p, updated_purchase.
+    repeat split; try now inversion Hequpdated_purchase; try now inversion receive_some.
+    + inversion receive_some; cbn. apply FMap.find_add.
+    + now inversion receive_some.
+    + now apply purchase_state_eq_correct in E.
+  - intros ([purchase [updated_purchase
+            (found_purchase & found_upd_purchase & purchases_updated & purchase_accepted & upd_purchase_delivered & upd_purchase_block &
+             const_commit & const_item & const_seller_bit & const_notes & const_buyer)]] &
+            const_listings & const_seller & const_timeout & from_seller & empty_acts).
+    receive_simpl_goal.
+    setoid_rewrite found_purchase.
+    rewrite purchase_accepted, from_seller; cbn.
+    rewrite const_seller, const_listings, const_timeout.
+    rewrite const_commit, const_item, const_notes, const_seller_bit, const_buyer.
+    rewrite <- upd_purchase_delivered, <- upd_purchase_block, empty_acts.
+    destruct updated_purchase; destruct new_state; cbn.
+    now setoid_rewrite purchases_updated.
+Qed.
+
+Lemma seller_counter_dispute : forall chain ctx prev_state new_state new_acts id random_bit,
+  Ecommerce.receive chain ctx prev_state (Some (seller_counter_dispute id random_bit)) = Some (new_state, new_acts)
+  <->
+  (exists purchase updated_purchase _item,
+      FMap.find id prev_state.(purchases) = Some purchase
+   /\ FMap.find id new_state.(purchases) = Some updated_purchase
+   /\ FMap.find purchase.(item) prev_state.(listings) = Some _item
+   /\ new_state.(purchases) = FMap.add id updated_purchase prev_state.(purchases)
+   /\ purchase.(purchase_state) = dispute
+   /\ updated_purchase.(seller_bit) = random_bit
+   /\ updated_purchase.(purchase_state) = counter
+   /\ updated_purchase.(last_block) = chain.(current_slot)
+   /\ ctx.(ctx_amount) = _item.(item_value)
+   (* These should remain constant *)
+   /\ purchase.(commit) = updated_purchase.(commit)
+   /\ purchase.(item) = updated_purchase.(item)
+   /\ purchase.(notes) = updated_purchase.(notes)
+   /\ purchase.(buyer) = updated_purchase.(buyer))
+  /\ prev_state.(listings) = new_state.(listings)
+  /\ prev_state.(seller) = new_state.(seller)
+  /\ prev_state.(timeout) = new_state.(timeout)
+
+  /\ (ctx.(ctx_from) =? prev_state.(seller))%address = true
+  /\ new_acts = []
+.
+Proof.
+  intros *. split.
+  - intros receive_some.
+    receive_simpl receive_some.
+    repeat split; try now inversion receive_some.
+    unfold setter_from_getter_Purchase_seller_bit in *.
+    unfold set_Purchase_seller_bit in *.
+    remember ({|
+    commit := commit p;
+    last_block := current_slot chain;
+    item := item p;
+    seller_bit := random_bit;
+    notes := notes p;
+    purchase_state := counter;
+    buyer := buyer p |})
+    as updated_purchase.
+    exists p, updated_purchase, i.
+    repeat split; try now inversion Hequpdated_purchase.
+    + inversion receive_some; cbn. apply FMap.find_add.
+    + now inversion receive_some.
+    + now apply purchase_state_eq_correct in E.
+    + now apply Z.eqb_eq in E1.
+  - intros ([purchase [updated_purchase [_item (
+             found_purchase & found_upd_purchase & found_item & updated_purchases & purchase_dispute &
+             seller_bit_rand & upd_purchase_counter & upd_purchase_block & amount_as_item &
+             const_commit & const_item & const_notes & const_buyer
+            )]]] &
+            const_listings & const_seller & const_timeout & from_seller & empty_acts).
+    receive_simpl_goal.
+    setoid_rewrite found_purchase.
+    rewrite purchase_dispute; cbn.
+    rewrite from_seller; cbn.
+    rewrite empty_acts.
+    setoid_rewrite found_item.
+    apply Z.eqb_eq in amount_as_item; rewrite amount_as_item; cbn.
+    rewrite const_seller, const_listings, const_timeout.
+    rewrite const_commit, <- upd_purchase_block, <- seller_bit_rand, <- upd_purchase_counter,
+            const_item, const_notes, const_buyer.
+    destruct updated_purchase; destruct new_state; cbn.
+    now setoid_rewrite <- updated_purchases. 
 Qed.
 
 End Theories.
