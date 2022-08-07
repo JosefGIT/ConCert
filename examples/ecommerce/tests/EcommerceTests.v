@@ -6,6 +6,7 @@ From ConCert.Execution Require Import Containers.
 From ConCert.Execution.Test Require Import QCTest.
 From ConCert.Execution Require Import ResultMonad.
 From ConCert.Examples.Ecommerce Require Import EcommerceGens.
+From ConCert.Examples.Ecommerce Require Import EcommercePrinters.
 From Coq Require Import List.
 From Coq Require Import ZArith.
 Import ListNotations.
@@ -35,22 +36,27 @@ Section EcommerceTestSetup.
   Definition ecommerce_chainbuilder :=
     unpack_result (TraceGens.add_block empty_chain
     [
-      build_act creator creator (Blockchain.act_transfer person_1 12);
-      build_act creator creator (Blockchain.act_transfer person_2 14);
-      build_act creator creator (Blockchain.act_transfer person_3 8);
+      build_act creator creator (Blockchain.act_transfer person_1 1);
       build_act creator creator (deploy_ecommerce)
     ]).
+    
     
 End EcommerceTestSetup.
 
 Module TestInfo <: EcommerceGensInfo.
   Definition contract_addr := ecommerce_contract_addr.
+  Definition purchase_buyer := person_1.
 End TestInfo.
 Module MG := EcommerceGens.EcommerceGens TestInfo.
 Import MG.
 
 Module NotationInfo <: TestNotationParameters.
-  Definition gAction := gEcommerceMsg.
+  Definition gAction := gEcommerceAction.
   Definition init_cb := ecommerce_chainbuilder.
 End NotationInfo.
 Module TN := TestNotations NotationInfo.
+Import TN.
+
+Check gChain.
+(* Sample to check quality of generated chains. *)
+Sample gChain.

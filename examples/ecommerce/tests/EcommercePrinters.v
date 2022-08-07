@@ -2,10 +2,14 @@ From ConCert.Execution Require Import Blockchain.
 From ConCert.Execution Require Import Serializable.
 From ConCert.Execution.Test Require Import QCTest.
 From ConCert.Examples.Ecommerce Require Import Ecommerce.
+Require Import NArith.
 
 Local Open Scope string_scope.
 
-
+Instance showN : Show N :=
+{
+  show (n : N) :=  show (N.to_nat n)
+}.
 
 Derive Show for Msg.
 Derive Show for PurchaseState.
