@@ -215,17 +215,14 @@ Definition buyer_open_commitment_action ctx state purchaseId buyer_bit nonce
   let current_purchases := state.(purchases) in
   do purchase <- get_purchase_option purchaseId current_purchases;
   do required_true (ctx.(ctx_from) =? purchase.(buyer))%address;
-  do match purchase_state purchase with
-     | counter => Some tt
-     | _ => None
-     end;
-  do required_true ((hash_bid purchaseId buyer_bit nonce =? purchase.(commit))%N); (* TMP TODO!! Use hashing! *)
+  do required_true (purchase_state_eq purchase.(purchase_state) counter);
+  do required_true ((hash_bid purchaseId buyer_bit nonce =? purchase.(commit))%N);
   let updated_purchase := purchase <| purchase_state := failed |> in
   let updated_purchases := FMap.add purchaseId updated_purchase current_purchases in
-  let target_transaction := if (eqb purchase.(seller_bit) buyer_bit) then state.(seller) else purchase.(buyer) in
+  let target_transaction := if (eqb purchase.(seller_bit) buyer_bit) then purchase.(buyer) else state.(seller) in
   do item <- get_item_option purchase.(item) state.(listings);
   Some (state <| purchases := updated_purchases |>,
-        [act_transfer target_transaction item.(item_value)]).
+        [act_transfer target_transaction (2 * item.(item_value))]).
 
 Definition seller_call_timeout_action ctx state chain purchaseId
   : option (State * list ActionBody) :=
@@ -274,10 +271,7 @@ Definition seller_item_was_delivered_action ctx state chain purchaseId
   : option (State * list ActionBody) :=
   let current_purchases := purchases state in
   do purchase <- get_purchase_option purchaseId current_purchases;
-  do match purchase_state purchase with
-     | accepted => Some tt
-     | _ => None
-     end;
+  do required_true (purchase_state_eq purchase.(purchase_state) accepted);
   do required_true (ctx.(ctx_from) =? state.(seller))%address;
   let updated_purchase := purchase <| purchase_state := delivered |>
                                    <| last_block := chain.(current_slot) |> in 
@@ -303,10 +297,7 @@ Definition seller_counter_dispute_action ctx state chain purchaseId random_bit
   : option (State * list ActionBody) :=
   let current_purchases := purchases state in
   do purchase <- get_purchase_option purchaseId current_purchases;
-  do match purchase_state purchase with
-     | dispute => Some tt
-     | _ => None
-     end;
+  do required_true (purchase_state_eq purchase.(purchase_state) dispute);
   do required_true (ctx.(ctx_from) =? state.(seller))%address;
   let money_sent := ctx.(ctx_amount) in
   do disputed_item <- get_item_option purchase.(item) state.(listings);
