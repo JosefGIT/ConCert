@@ -26,7 +26,7 @@ Set Nonrecursive Elimination Schemes.
 
 (* Simply called State in the original code *)
 Inductive PurchaseState :=
-  | null (* Might be unnecessary. *)
+  (* null state is redundant in this ConCert implementation *)
   | requested
   | accepted
   | rejected
@@ -38,7 +38,6 @@ Inductive PurchaseState :=
 
 Definition purchase_state_eq (s1 s2 : PurchaseState) : bool :=
   match s1, s2 with
-  | null, null
   | requested, requested
   | accepted, accepted
   | rejected, rejected
@@ -358,7 +357,7 @@ Global Instance Item_serializable : Serializable Item :=
   
   
 Global Instance PurchaseState_serializable : Serializable PurchaseState :=
-  Derive Serializable PurchaseState_rect<null, requested, accepted, rejected, delivered, completed, dispute, counter, failed>.
+  Derive Serializable PurchaseState_rect<requested, accepted, rejected, delivered, completed, dispute, counter, failed>.
   
 Global Instance Purchase_serializable : Serializable Purchase :=
   Derive Serializable Purchase_rect<build_purchase>.
