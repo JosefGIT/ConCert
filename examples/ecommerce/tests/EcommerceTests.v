@@ -36,7 +36,7 @@ Section EcommerceTestSetup.
   Definition ecommerce_chainbuilder :=
     unpack_result (TraceGens.add_block empty_chain
     [
-      build_act creator creator (Blockchain.act_transfer person_1 1);
+      build_act creator creator (Blockchain.act_transfer person_1 10);
       build_act creator creator (deploy_ecommerce)
     ]).
     
