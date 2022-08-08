@@ -49,7 +49,10 @@ Definition gEcommerceAction (env : Env): GOpt Action :=
                 backtrack [
                     (1%nat, call purchase.(buyer) 0 (buyer_abort purchaseId));
                     (1%nat, call state.(seller) 0 (seller_reject_contract purchaseId));
-                    (5%nat, call state.(seller) 0 (seller_accept_contract purchaseId))
+                    (5%nat, call state.(seller) 0 (seller_accept_contract purchaseId));
+                    (* Additional update listings here after a request to show error in property-based testing. *)
+                    (1% nat, value <- bindGen (choose (1, 10)%Z) returnGenSome ;;  
+                             call state.(seller) 0 (seller_update_listings itemId "Malicious update!" value))
                 ]
           | accepted =>
                 (* buyer_call_timeout || seller_item_was_delivered *)
@@ -85,7 +88,7 @@ Definition gEcommerceAction (env : Env): GOpt Action :=
       end
   | _, _ =>
       (* seller_update_listings *)
-      value <- bindGen (choose (1, 8)%Z) returnGenSome ;;  
+      value <- bindGen (choose (1, 10)%Z) returnGenSome ;;  
       call state.(seller) 0 (seller_update_listings itemId "description here" value)
   end.
 
