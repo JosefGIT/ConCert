@@ -13,6 +13,8 @@ Import ListNotations.
 Module Type EcommerceGensInfo.
   Parameter contract_addr : Address.
   Parameter purchase_buyer : Address.
+  Parameter item1_Id : nat.
+  Parameter purchaseId : N.
 End EcommerceGensInfo.
 
 
@@ -32,15 +34,16 @@ Definition gEcommerceAction (env : Env): GOpt Action :=
       |} in
   state <- returnGen (get_contract_state Ecommerce.State env contract_addr);;
   let buyer_balance := env.(env_account_balances) purchase_buyer in
-  let itemId := 42%nat in
+  let itemId := item1_Id%nat in
   let cur_slot := env.(env_chain).(current_slot) in
-  let purchaseId := hash_bid2 3%nat purchase_buyer in 
   let buyer_dispute_delivery_commmitment := hash_bid purchaseId true 42%N in
   match FMap.find itemId state.(listings), cur_slot with
-  | Some _item, 2%nat => (* This is done explicitly to make sure that we know the purchaseId in this generator. Note that for some reason current_slot has to be 2. In the message the hash will use current_slot = 3. *)
+  | Some _item, 1%nat => (* This is done explicitly with cur_slot to make sure that we know the purchaseId in this generator. *)
       (* buyer_request_purchase *)
       call purchase_buyer _item.(item_value) (buyer_request_purchase itemId "notes here")
   | Some _item, _ =>
+  backtrack[
+    (19%nat,
       match FMap.find purchaseId state.(purchases) with
       | Some purchase => 
           match purchase.(purchase_state) with
@@ -49,10 +52,7 @@ Definition gEcommerceAction (env : Env): GOpt Action :=
                 backtrack [
                     (1%nat, call purchase.(buyer) 0 (buyer_abort purchaseId));
                     (1%nat, call state.(seller) 0 (seller_reject_contract purchaseId));
-                    (5%nat, call state.(seller) 0 (seller_accept_contract purchaseId));
-                    (* Additional update listings here after a request to show error in property-based testing. *)
-                    (1% nat, value <- bindGen (choose (1, 10)%Z) returnGenSome ;;  
-                             call state.(seller) 0 (seller_update_listings itemId "Malicious update!" value))
+                    (5%nat, call state.(seller) 0 (seller_accept_contract purchaseId))
                 ]
           | accepted =>
                 (* buyer_call_timeout || seller_item_was_delivered *)
@@ -85,11 +85,13 @@ Definition gEcommerceAction (env : Env): GOpt Action :=
           | rejected | failed | completed => returnGen None
           end
       | _ => returnGen None
-      end
-  | _, _ =>
-      (* seller_update_listings *)
-      value <- bindGen (choose (1, 10)%Z) returnGenSome ;;  
-      call state.(seller) 0 (seller_update_listings itemId "description here" value)
+      end);
+      (1% nat, (* Additional update listings here after a request to show error in property-based testing. *)
+               value <- bindGen (choose (1, 5)%Z) returnGenSome ;;  
+               call state.(seller) 0 (seller_update_listings itemId "updated description" value)
+      )
+      ]
+  | _, _ => returnGen None (* Should never happen *)
   end.
 
 End EcommerceGens.
