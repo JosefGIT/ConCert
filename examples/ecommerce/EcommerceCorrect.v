@@ -56,20 +56,6 @@ Ltac receive_simpl_goal_step :=
 Tactic Notation "receive_simpl_goal" := cbn; repeat (receive_simpl_goal_step; cbn).
 
 Open Scope Z.
-
-
-
-(* seller and timeout are constant .. *)
-(* listings price must never change - not correct in the smart contract implementation! *)
-
-
-Ltac receive_simpl_step2 g :=
-  match type of g with
-  | context[FMap.find ?k ?v] => destruct (FMap.find k v) eqn:?; cbn in g
-  end. 
-
-Tactic Notation "receive_simpl2" constr(g) := cbn in g; repeat (receive_simpl_step2 g); try discriminate.
-
   
 Lemma purchase_state_eq_correct : forall (state1 state2 : PurchaseState),
   state1 = state2 <-> purchase_state_eq state1 state2 = true.
