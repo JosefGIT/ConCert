@@ -190,10 +190,8 @@ Definition buyer_call_timeout_action ctx state chain purchaseId
   : option (State * list ActionBody) :=
   let current_purchases := purchases state in
   do purchase <- get_purchase_option purchaseId current_purchases;
-  do match purchase_state purchase with
-     | dispute | accepted => Some tt
-     | _ => None
-     end;
+  do required_true (purchase_state_eq purchase.(purchase_state) dispute
+                 || purchase_state_eq purchase.(purchase_state) accepted);
   do required_true (ctx.(ctx_from) =? purchase.(buyer))%address;
   do required_true (purchase.(last_block) + state.(timeout) <? chain.(current_slot))%nat;
   let updated_purchase := purchase <| purchase_state := failed |> in 
@@ -227,10 +225,8 @@ Definition seller_call_timeout_action ctx state chain purchaseId
   : option (State * list ActionBody) :=
   let current_purchases := purchases state in
   do purchase <- get_purchase_option purchaseId current_purchases;
-  do match purchase_state purchase with
-     | delivered | counter => Some tt
-     | _ => None
-     end;
+  do required_true (purchase_state_eq purchase.(purchase_state) delivered
+                 || purchase_state_eq purchase.(purchase_state) counter);
   do required_true (ctx.(ctx_from) =? state.(seller))%address;
   do required_true (purchase.(last_block) + state.(timeout) <? chain.(current_slot))%nat;
   let updated_purchase := purchase <| purchase_state := completed |> in 
@@ -243,10 +239,7 @@ Definition seller_reject_contract_action ctx state purchaseId
   : option (State * list ActionBody) :=
   let current_purchases := purchases state in
   do purchase <- get_purchase_option purchaseId current_purchases;
-  do match purchase_state purchase with
-     | requested => Some tt
-     | _ => None
-     end;
+  do required_true (purchase_state_eq purchase.(purchase_state) requested);
   do required_true (ctx.(ctx_from) =? state.(seller))%address;
   let updated_purchase := purchase <| purchase_state := rejected |> in 
   let updated_purchases := FMap.add purchaseId updated_purchase current_purchases in
@@ -281,10 +274,7 @@ Definition seller_forfeit_dispute_action ctx state purchaseId
   : option (State * list ActionBody) :=
   let current_purchases := purchases state in
   do purchase <- get_purchase_option purchaseId current_purchases;
-  do match purchase_state purchase with
-     | dispute => Some tt
-     | _ => None
-     end;
+  do required_true (purchase_state_eq purchase.(purchase_state) dispute);
   do required_true (ctx.(ctx_from) =? state.(seller))%address;
   let updated_purchase := purchase <| purchase_state := failed |> in 
   let updated_purchases := FMap.add purchaseId updated_purchase current_purchases in
