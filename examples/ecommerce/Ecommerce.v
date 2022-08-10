@@ -78,7 +78,7 @@ Record State :=
   build_state {
     seller: Address;
     listings : listings_type; (* Key is the item identifier *)
-    purchases : purchases_type; (* TODO N should be somethings that corresponds to [bytes32] in Solidity!!  *)
+    purchases : purchases_type;
     timeout : nat;
   }.
 
@@ -145,10 +145,7 @@ Definition buyer_abort_action (ctx : ContractCallContext) (state : State) (purch
   : option (State * list ActionBody) :=
     let current_purchases := purchases state in
     do purchase <- get_purchase_option purchaseId current_purchases;
-    do match purchase_state purchase with
-       | requested => Some tt
-       | _ => None
-       end;
+    do required_true (purchase_state_eq purchase.(purchase_state) requested);
     do required_true (ctx.(ctx_from) =? purchase.(buyer))%address;
     let updated_purchase := purchase <| purchase_state := failed |> in 
     let updated_purchases := FMap.add purchaseId updated_purchase current_purchases in
@@ -160,10 +157,7 @@ Definition buyer_confirm_delivery_action ctx state purchaseId
                                        : option (State * list ActionBody) :=
   let current_purchases := purchases state in
     do purchase <- get_purchase_option purchaseId current_purchases;
-    do match purchase_state purchase with
-       | delivered => Some tt
-       | _ => None
-       end;
+    do required_true (purchase_state_eq purchase.(purchase_state) delivered);
     do required_true (ctx.(ctx_from) =? purchase.(buyer))%address;
     let updated_purchase := purchase <| purchase_state := completed |> in 
     let updated_purchases := FMap.add purchaseId updated_purchase current_purchases in
@@ -205,8 +199,7 @@ Definition buyer_call_timeout_action ctx state chain purchaseId
 Definition hash_bid (id : N) (buyer_bit : bool) (nonce : N) : N :=
     Npos (countable.encode (id, buyer_bit, nonce)).
 Arguments hash_bid : simpl never.
-        (* TODO !!*)
-Print get_item_option.
+
 Definition buyer_open_commitment_action ctx state purchaseId buyer_bit nonce
   : option (State * list ActionBody) :=
   let current_purchases := state.(purchases) in
