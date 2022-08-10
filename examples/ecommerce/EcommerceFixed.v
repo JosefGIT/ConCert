@@ -1,6 +1,6 @@
 (*
-  Description of the contract: https://cs.au.dk/~nis/commerce/.
-  Solidity implementation:     https://raw.githubusercontent.com/SSODelta/DecentralizedCommerce/main/Vendor.sol
+  Description of the contract:                         https://cs.au.dk/~nis/commerce/.
+  Changed version of the Solidity implementation from: https://raw.githubusercontent.com/SSODelta/DecentralizedCommerce/main/Vendor.sol
 *)
 
 Require Import Blockchain.
