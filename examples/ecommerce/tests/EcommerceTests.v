@@ -105,7 +105,7 @@ Definition amount_sent_is_item_value_of_purchase
   | _ => checker false (* should never occur *)
   end.
 
-(* on [buyer_abort], amount transferred to to buyer is equal to item_value in the purchase. *)
+(* on [buyer_abort], amount transferred to buyer is equal to item_value in the purchase. *)
 (* FAILS! *)
 (*
 QuickChick(
