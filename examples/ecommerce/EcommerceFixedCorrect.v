@@ -26,6 +26,9 @@ Ltac receive_simpl_step g :=
   | context[find_item] => unfold find_item in g; cbn in g
   | context[purchase_exists] => unfold purchase_exists in g; cbn in g
   | context[FMap.find _ ?v] => destruct (FMap.find _ v) eqn:?; cbn in g
+  | context[required_true ?cond] => destruct cond eqn:?E; inversion E; cbn in g
+  | context[required_false ?cond] => destruct cond eqn:?E; inversion E; cbn in g
+
   | context[setter_from_getter_State_purchases] => unfold setter_from_getter_State_purchases in g; cbn in g
   | context[set_State_purchases] => unfold set_State_purchases in g; cbn in g
   | context[setter_from_getter_Purchase_last_block] => unfold setter_from_getter_Purchase_last_block in g; cbn in g
@@ -34,7 +37,8 @@ Ltac receive_simpl_step g :=
   | context[set_Purchase_purchase_state] => unfold set_Purchase_purchase_state in g; cbn in g
   | context[setter_from_getter_Purchase_seller_bit] => unfold setter_from_getter_Purchase_seller_bit in g; cbn in g
   | context[set_Purchase_seller_bit] => unfold set_Purchase_seller_bit in g; cbn in g
-  | context[required_true ?cond] => destruct cond eqn:?E; inversion E; cbn in g
+  | context[setter_from_getter_State_listings] => unfold setter_from_getter_State_listings in g; cbn in g
+  | context[set_State_listings] => unfold set_State_listings in g; cbn in g
   end. 
 
 Tactic Notation "receive_simpl" constr(g) := cbn in g; repeat (receive_simpl_step g); try discriminate.
@@ -823,4 +827,81 @@ Proof.
     now setoid_rewrite <- updated_purchases.
 Qed.
 
+(* Proving correct for aux. function used in [seller_update_listings] *)
+Lemma no_active_purchase_for_itemId_correct : forall state _itemId,
+  no_active_purchase_for_itemId state _itemId = true
+  ->
+  Forall (fun '(_, purchase) => 
+               purchase.(itemId) <> _itemId
+            \/ purchase.(purchase_state) = completed
+            \/ purchase.(purchase_state) = rejected
+            \/ purchase.(purchase_state) = failed)
+       (FMap.elements state.(purchases)).
+Proof.
+  intros * no_active_purchase_true.
+  unfold no_active_purchase_for_itemId in *.
+  induction (FMap.elements state.(purchases)) as [| [purchaseId purchase] key_purchases]; auto.
+  assert (cons_to_app : (purchaseId, purchase) :: key_purchases = [(purchaseId, purchase)] ++ key_purchases). { reflexivity. }
+  rewrite cons_to_app in no_active_purchase_true.
+  rewrite filter_app in no_active_purchase_true; cbn in *.
+  apply Forall_cons.
+  + clear IHkey_purchases.
+  (* Destruct appropriate purchase conditions. *)
+    destruct ((purchase.(itemId) =? _itemId)%nat) eqn:is_itemId; cbn in *;
+    destruct (purchase_state_eq purchase.(purchase_state) completed) eqn:state_completed;
+    try apply purchase_state_eq_correct in state_completed;
+    destruct (purchase_state_eq purchase.(purchase_state) rejected) eqn:state_rejected;
+    try apply purchase_state_eq_correct in state_rejected;
+    destruct (purchase_state_eq purchase.(purchase_state) failed) eqn:state_failed;
+    try apply purchase_state_eq_correct in state_failed;
+    cbn in *; try easy.
+    * apply andb_true_iff in no_active_purchase_true; destruct no_active_purchase_true as [purchase_states _].
+      destruct (purchase.(purchase_state)); try discriminate.
+    * left. now apply beq_nat_false.
+  + apply IHkey_purchases.
+    (* Destruct appropriate purchase conditions. *)
+    destruct ((purchase.(itemId) =? _itemId)%nat) eqn:is_itemId; cbn in *;
+    destruct (purchase_state_eq purchase.(purchase_state) completed) eqn:state_completed;
+    try apply purchase_state_eq_correct in state_completed;
+    destruct (purchase_state_eq purchase.(purchase_state) rejected) eqn:state_rejected;
+    try apply purchase_state_eq_correct in state_rejected;
+    destruct (purchase_state_eq purchase.(purchase_state) failed) eqn:state_failed;
+    try apply purchase_state_eq_correct in state_failed;
+    cbn in *; try easy;
+    (* Split boolean in no_active_purchase_true. *)
+    apply andb_true_iff in no_active_purchase_true; destruct no_active_purchase_true as [H1 H2]; try easy.
+Qed.
+
+(*
+(* If item exists for _itemId, then all purchases belonging to that item should be of status [completed], [rejected] or [failed] *)
+Lemma seller_update_listings_correct : forall chain ctx prev_state new_state new_acts _itemId upd_description upd_value,
+  EcommerceFixed.receive chain ctx prev_state (Some (seller_update_listings _itemId upd_description upd_value)) = Some (new_state, new_acts)
+  <->
+  Forall (fun '(_, purchase) => 
+               purchase.(itemId) <> _itemId
+            \/ purchase.(purchase_state) = completed
+            \/ purchase.(purchase_state) = rejected
+            \/ purchase.(purchase_state) = failed)
+       (FMap.elements prev_state.(purchases))
+  /\ (ctx.(ctx_from) =? prev_state.(seller))%address = true
+  /\ FMap.add _itemId {| item_value := upd_value; item_description := upd_description |} prev_state.(listings) = new_state.(listings)
+  /\ prev_state.(purchases) = new_state.(purchases)
+  /\ prev_state.(seller) = new_state.(seller)
+  /\ prev_state.(timeout) = new_state.(timeout)
+  /\ new_acts = []
+  .
+Proof.
+  intros *. split.
+  - intros receive_some.
+    receive_simpl receive_some.
+    repeat split; try now inversion receive_some.
+    now apply no_active_purchase_for_itemId_correct.
+  - intros (forall_purchases & from_seller & item_add &
+            const_listings & const_purchases & const_timeout).
+    receive_simpl_goal.
+    rewrite from_seller; cbn.
+    
+    intros
+    exists i.
+  *)
 End Theories.

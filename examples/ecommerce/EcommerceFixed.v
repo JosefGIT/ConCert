@@ -290,16 +290,30 @@ Definition seller_counter_dispute_action ctx state chain purchaseId random_bit
   let updated_purchases := FMap.add purchaseId updated_purchase current_purchases in
   Some (state <| purchases := updated_purchases|>, []).
 
-(* TODO - NEEDS FIX! *)
+  
+(* Aux for [seller_update_listings_action] *)
+Definition no_active_purchase_for_itemId state _itemId :=
+  let all_key_purchases := FMap.elements state.(purchases) in
+  let key_purchases_for_itemId := filter (fun '(_, purchase) => (purchase.(itemId) =? _itemId)%nat)
+                              all_key_purchases in
+  forallb
+  (fun '(_, purchase) =>
+    match purchase.(purchase_state) with
+    | completed | rejected | failed => true
+    | _ => false
+    end)
+  key_purchases_for_itemId.
+
 (* Is it possible to iterate FMaps? *)
 Definition seller_update_listings_action ctx state itemId descr value
   : option (State * list ActionBody) :=
   do required_true (ctx.(ctx_from) =? state.(seller))%address;
+  do required_true (no_active_purchase_for_itemId state itemId);
   let current_listings := state.(listings) in
   let new_item := {| item_value :=  value; item_description := descr |} in 
   let updated_listings := FMap.add itemId new_item current_listings in
   Some (state <| listings := updated_listings |>, []).
-  
+
 Definition receive (chain : Chain) (ctx : ContractCallContext)
                    (state : State) (msg : option Msg)
                    : option (State * list ActionBody) :=
