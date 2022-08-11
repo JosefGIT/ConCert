@@ -91,6 +91,7 @@ nra.cache
 ## Editors
 
 ### VisualStudioCode ###
+.vscode/
 .vscode/*
 !.vscode/tasks.json
 !.vscode/launch.json
