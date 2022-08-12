@@ -70,7 +70,7 @@ Definition all_hashes_are_satisfied caller_bids values fakes secrets : Prop :=
 Definition total_deposit (addr : Address) (state : BlindAuction.State) : Amount:=
     sumZ deposit (find_bids_or_empty addr state.(bids)). 
 
-Definition bid_has_ended chain state := state.(bidding_end) <? chain.(current_slot)%nat.
+Definition bid_has_ended chain state := (state.(bidding_end) <? chain.(current_slot))%nat.
 
 (* aux_compute never changes bidding_end or reveal_end *)
 Lemma aux_compute_refund_does_not_change_times : forall refund prev_state caller caller_bids values fakes secrets to_refund updated_state,
