@@ -20,6 +20,15 @@ Context `{Base : ChainBase}.
 Arguments hash_bid : simpl never.
 Arguments hash_purchaseId : simpl never.
 
+
+Ltac destruct_message :=
+  match goal with
+  | receive_some : context[receive _ _ _ _ ?msg = Some (_, _)] |- _ => destruct msg as [?m|]; try discriminate; destruct m
+  (* At the moment receive with "EcommerceFixed" prefix is also necessary *)
+  | receive_some : context[EcommerceFixed.receive _ _ _ ?msg = Some (_, _)] |- _ => destruct msg as [?m|]; try discriminate; destruct m
+  end.
+
+
 Ltac receive_simpl_step g :=
   match type of g with
   | context[find_purchase] => unfold find_purchase in g; cbn in g
@@ -73,7 +82,7 @@ Proof.
 Qed.
 
 (**** Correctness for messages *****)
-Lemma buyer_request_purchase_contract_correct : forall chain ctx prev_state new_state new_acts _itemId _notes,
+Lemma buyer_request_purchase_correct : forall chain ctx prev_state new_state new_acts _itemId _notes,
   EcommerceFixed.receive chain ctx prev_state (Some (buyer_request_purchase _itemId _notes)) = Some (new_state, new_acts)
   <->
      (exists item,
@@ -928,5 +937,138 @@ Proof.
     rewrite item_add, const_seller, const_purchases, const_timeout, empty_acts.
     now destruct new_state.
 Qed.
+
+
+(* init correct *)
+Lemma init_correct : forall state chain ctx setup,
+  EcommerceFixed.init chain ctx setup = Some (state) ->
+       (0 < setup.(setup_timeout))%nat
+    /\ state.(timeout) = setup.(setup_timeout)
+    /\ state.(listings) = setup.(setup_listings)
+    /\ state.(seller) = ctx.(ctx_from)
+    /\ state.(purchases) = FMap.empty.
+Proof.
+  intros * init_some.
+  receive_simpl init_some. inversion init_some; cbn.
+  now apply Nat.ltb_lt in E.
+Qed.
+
+
+Ltac apply_message_lemma H :=
+  match type of H with
+  | _ _ _ _ (Some (buyer_request_purchase _ _)) = Some (_, _) =>
+      apply buyer_request_purchase_correct in H
+  | _ _ _ _ (Some (buyer_abort _)) = Some (_, _) =>
+      apply buyer_abort_correct in H
+  | _ _ _ _ (Some (buyer_confirm_delivery _)) = Some (_, _) =>
+      apply buyer_confirm_delivery_correct in H
+  | _ _ _ _ (Some (buyer_dispute_delivery _ _)) = Some (_, _) =>
+      apply buyer_dispute_delivery_correct in H
+  | _ _ _ _ (Some (buyer_call_timeout _)) = Some (_, _) =>
+      apply buyer_call_timeout_correct in H
+  | _ _ _ _ (Some (buyer_open_commitment _ _ _)) = Some (_, _) =>
+      apply buyer_open_commitment_correct in H
+  | _ _ _ _ (Some (seller_call_timeout _)) = Some (_, _) =>
+      apply seller_call_timeout_correct in H
+  | _ _ _ _ (Some (seller_reject_contract _)) = Some (_, _) =>
+      apply seller_reject_contract_correct in H
+  | _ _ _ _ (Some (seller_accept_contract _)) = Some (_, _) =>
+      apply seller_accept_contract_correct in H
+  | _ _ _ _ (Some (seller_item_was_delivered _)) = Some (_, _) =>
+      apply seller_item_was_delivered_correct in H
+  | _ _ _ _ (Some (seller_forfeit_dispute _)) = Some (_, _) =>
+      apply seller_forfeit_dispute_correct in H
+  | _ _ _ _ (Some (seller_counter_dispute _ _)) = Some (_, _) =>
+      apply seller_counter_dispute_correct in H
+  | _ _ _ _ (Some (seller_update_listings _ _ _)) = Some (_, _) =>
+      apply seller_update_listings_correct in H
+  end.
+
+(* [seller] and [timeout] never changes on receive. *)
+Lemma seller_timeout_constant_on_receive : forall chain ctx msg prev_state new_state new_acts,
+  EcommerceFixed.receive chain ctx prev_state msg = Some (new_state, new_acts) ->
+       prev_state.(seller) = new_state.(seller)
+    /\ prev_state.(timeout) = new_state.(timeout).
+Proof.
+  intros * receive_some.
+  destruct_message; now apply_message_lemma receive_some.
+Qed.
+
+
+
+(* [timeout] in the state is always equal to [setup_timeout] from deployment. *)
+Lemma timeout_constants chain_state contract_address (trace : ChainTrace empty_state chain_state) :
+  env_contracts chain_state contract_address = Some (contract : WeakContract) ->
+  exists deploy_info cstate,
+    deployment_info _ trace contract_address = Some deploy_info
+    /\ contract_state chain_state contract_address = Some cstate
+    /\ let setup := deploy_info.(deployment_setup) in
+        cstate.(timeout) = setup.(setup_timeout).
+Proof.
+  apply (lift_dep_info_contract_state_prop contract); intros *.
+  - intros init_some. apply init_correct in init_some; auto.
+    cbn. now inversion init_some.
+  - intros IH receive_some.
+    destruct_message; apply_message_lemma receive_some; auto; easy.
+Qed.
+
+(*Lemma test : forall {K V} (m : FMap K V) (new_key : K) (new_value : V),
+  42 = 42.
+  Forall f (FMap.elements m) ->
+  Forall f (FMap.elements).
+Lemma purchase_buyer_is_never_contract_addr : forall chain_state contract_address,
+  reachable chain_state ->
+  env_contracts chain_state contract_address = Some (contract : WeakContract) ->
+  exists contract_state,
+  Forall (
+    fun '(_, purchase) =>
+      purchase.(buyer) <> contract_address
+  ) (FMap.elements contract_state.(purchases)).
+Proof.
+  contract_induction; intros; auto.
+  - apply init_correct in init_some; auto.
+    destruct_hyps. rewrite H3. admit.
+  - destruct_message; apply_message_lemma receive_some; auto.
+    + destruct_hyps. rewrite H6. cbn. destruct new_state; cbn in *. easy.
+Lemma no_self_calls : forall chain_state contract_address,
+  reachable chain_state ->
+  env_contracts chain_state contract_address = Some (contract : WeakContract) ->
+  Forall (
+    fun act_body =>
+      match act_body with
+      | act_transfer to _ => (to =? contract_address)%address = false
+      | _ => False
+      end) (outgoing_acts chain_state contract_address).
+Proof.
+  contract_induction; intros; auto.
+  - now inversion IH.
+  - apply Forall_app. split; auto.
+    clear IH.
+    (*instantiate (CallFacts := fun _ ctx state _ _ => 
+        state.(seller <> ctx_contract_address ctx)
+    /\ fundDeposit state <> ctx_contract_address ctx).*)
+
+    destruct_message; apply_message_lemma receive_some; auto;
+    try now rewrite_var receive_some new_acts.
+    + destruct_hyps.
+    + destruct_hyps. destruct receive_some. destruct H. destruct H. destruct H.
+     rewrite_var H new_acts. cbn.
+    try now rewrite_var receive_some new_acts.
+    + apply_message_lemma receive_some.
+    now rewrite_var receive_some new_acts test. repeat_split_H receive_some.
+    repeat_rewrite_H receive_some.
+      destruct receive_some as [H1 H2]. destruct H2 as [H3 H4].
+       destruct H4 as [H5 H6]. destruct H6 as [H7 H8].
+       destruct H8 as [H9 H10]. easy.
+       destruct H1. destruct H2.
+    repeat_split_H receive_some. destruct H3. repeat_split_H H3. easy.
+    repeat_split_H H2. repeat_split_H H2. easy.
+      assert (OK : new_acts = [] ). { easy. } rewr easy.
+      pose proof (new_acts = []) as [OK].
+      assert (OK : new_acts = [] ). { easy. } destruct receive_some. easy. apply buyer_request_purchase_correct in receive_some.
+      destruct receive_some. destruct H0. destruct H1. destruct H2. destruct H3. easy. rewrite H4. cbn. easy.
+    
+*)
   
+(* If timeout has reached for an active [Purchase], it is possible for someone to end the contract. *)
 End Theories.
