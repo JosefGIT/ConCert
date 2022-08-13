@@ -1012,10 +1012,27 @@ Proof.
     destruct_message; apply_message_lemma receive_some; auto; easy.
 Qed.
 
-(*Lemma test : forall {K V} (m : FMap K V) (new_key : K) (new_value : V),
-  42 = 42.
+From stdpp Require gmap.
+Lemma map_Forall_to_list_2 : forall {K V : Type} `{countable.Countable K} (m : FMap K V) (P : (K * V) -> Prop),
+  fin_maps.map_Forall (prod_uncurry P) m <-> Forall P (FMap.elements m).
+Proof.
+  intros *. split; intros HForall.
+  - apply Forall_forall. intros [i x] ix_in_m.
+    apply base.elem_of_list_In in ix_in_m. rewrite fin_maps.elem_of_map_to_list in ix_in_m. now apply (HForall i x).
+  - intros i x find_some. rewrite Forall_forall in HForall. rewrite <- fin_maps.elem_of_map_to_list in find_some. apply HForall. now rewrite <- base.elem_of_list_In.
+Qed.
+
+Lemma Forall_elements_add : forall {K V : Type} `{countable.Countable K} (m : FMap K V) (f : (K*V) -> Prop) (new_key : K) (new_value : V),
+  f (new_key, new_value) ->
   Forall f (FMap.elements m) ->
-  Forall f (FMap.elements).
+  Forall f (FMap.elements (FMap.add new_key new_value m)).
+Proof.
+  intros * new_satisfied m_satisfied.
+  apply map_Forall_to_list_2; auto.
+  apply map_Forall_to_list_2 in m_satisfied.
+  apply fin_maps.map_Forall_insert_2; auto.
+Qed.
+
 Lemma purchase_buyer_is_never_contract_addr : forall chain_state contract_address,
   reachable chain_state ->
   env_contracts chain_state contract_address = Some (contract : WeakContract) ->
@@ -1027,9 +1044,10 @@ Lemma purchase_buyer_is_never_contract_addr : forall chain_state contract_addres
 Proof.
   contract_induction; intros; auto.
   - apply init_correct in init_some; auto.
-    destruct_hyps. rewrite H3. admit.
+    destruct_hyps. rewrite H3. (*rewrite FMap.elements_empty.*) admit.
   - destruct_message; apply_message_lemma receive_some; auto.
-    + destruct_hyps. rewrite H6. cbn. destruct new_state; cbn in *. easy.
+    + destruct_hyps. rewrite H6. cbn. destruct new_state; cbn in *.
+      apply Forall_elements_add; auto. easy.
 Lemma no_self_calls : forall chain_state contract_address,
   reachable chain_state ->
   env_contracts chain_state contract_address = Some (contract : WeakContract) ->
