@@ -75,6 +75,12 @@ Tactic Notation "receive_simpl_goal" := cbn; repeat (receive_simpl_goal_step; cb
 
 Open Scope Z.
   
+Lemma adress_eqb_eq : forall (addr1 addr2 : Address),
+  (addr1 =? addr2)%address = true <-> addr1 = addr2.
+Proof.
+  intros *. split; intros H; destruct (address_eqb_spec addr1 addr2); easy.
+Qed.
+
 Lemma purchase_state_eq_correct : forall (state1 state2 : PurchaseState),
   state1 = state2 <-> purchase_state_eq state1 state2 = true.
 Proof.
@@ -1012,6 +1018,7 @@ Proof.
     destruct_message; apply_message_lemma receive_some; auto; easy.
 Qed.
 
+(**** START  --  FINITE MAP LEMMAS ****)
 From stdpp Require gmap.
 Lemma map_Forall_to_list_2 : forall {K V : Type} `{countable.Countable K} (m : FMap K V) (P : (K * V) -> Prop),
   fin_maps.map_Forall (prod_uncurry P) m <-> Forall P (FMap.elements m).
@@ -1033,21 +1040,124 @@ Proof.
   apply fin_maps.map_Forall_insert_2; auto.
 Qed.
 
+
+Lemma val_in_map_In_key_val : forall {K V : Type} `{countable.Countable K} (m : FMap K V) (v : V),
+  In v (FMap.values m) -> exists (k : K), In (k, v) (FMap.elements m).
+Proof.
+  intros *.
+  unfold FMap.values. induction (FMap.elements m) as [| [k' v'] vals' IH]; intros v_in_m.
+  - easy.
+  - cbn in *. destruct v_in_m.
+    + subst. now exists k'.
+    + destruct IH; auto. now exists x.
+Qed. 
+
+Lemma key_val_in_map_In_val : forall {K V : Type} `{countable.Countable K} (m : FMap K V) (k : K) (v : V),
+  In (k, v) (FMap.elements m) -> In v (FMap.values m).
+Proof.
+  intros *.
+  unfold FMap.values. induction (FMap.elements m) as [| [k' v'] vals' IH]; intros kv_in_m; cbn in *.
+  - easy.
+  - destruct kv_in_m as [kv_eq | kv_in_vals'].
+    + now inversion kv_eq.
+    + right. now apply IH.
+Qed. 
+
+Lemma Forall_elements_values : forall {K V : Type} `{countable.Countable K} (m : FMap K V) (f : V -> Prop),
+  Forall (fun '(_, v) => f v) (FMap.elements m) <-> Forall f (FMap.values m).
+Proof.
+  intros *. split; intros forall_m.
+  - rewrite Forall_forall in *. intros v v_in_m.
+    apply val_in_map_In_key_val in v_in_m.
+    destruct v_in_m as [k' in_m]. now apply (forall_m (k', v)).
+  - rewrite Forall_forall in *. intros [k' v'] k'v'_in_m.
+    apply forall_m. now apply key_val_in_map_In_val in k'v'_in_m.
+Qed.
+
+Lemma Forall_values_add : forall {K V : Type} `{countable.Countable K} (m : FMap K V) (f : V -> Prop) (new_key : K) (new_value : V),
+  f new_value ->
+  Forall f (FMap.values m) ->
+  Forall f (FMap.values (FMap.add new_key new_value m)).
+Proof.
+  intros * new_satisfied m_satisfied.
+  rewrite <- Forall_elements_values in *.
+  now apply Forall_elements_add.
+Qed.
+
+Lemma In_values_find_some : forall {K V : Type} `{countable.Countable K} (m : FMap K V) (v : V),
+  In v (FMap.values m) -> exists k, FMap.find k m = Some v.
+Proof.
+  intros * kv_in_m. apply val_in_map_In_key_val in kv_in_m.
+  destruct kv_in_m as [k' kv_in_m].
+  exists k'. now apply FMap.In_elements.
+Qed.
+
+Lemma find_some_In_values : forall {K V : Type} `{countable.Countable K} (m : FMap K V) (k : K) (v : V),
+  FMap.find k m = Some v -> In v (FMap.values m).
+Proof.
+  intros * find_some.
+  apply FMap.In_elements in find_some.
+  now apply key_val_in_map_In_val in find_some.
+Qed.
+(**** END  --  FINITE MAP LEMMAS ****)
+
 Lemma purchase_buyer_is_never_contract_addr : forall chain_state contract_address,
   reachable chain_state ->
   env_contracts chain_state contract_address = Some (contract : WeakContract) ->
   exists contract_state,
   Forall (
-    fun '(_, purchase) =>
+    fun purchase =>
       purchase.(buyer) <> contract_address
-  ) (FMap.elements contract_state.(purchases)).
+  ) (FMap.values contract_state.(purchases)).
 Proof.
   contract_induction; intros; auto.
   - apply init_correct in init_some; auto.
     destruct_hyps. rewrite H3. (*rewrite FMap.elements_empty.*) admit.
-  - destruct_message; apply_message_lemma receive_some; auto.
-    + destruct_hyps. rewrite H6. cbn. destruct new_state; cbn in *.
+  - destruct_message; apply_message_lemma receive_some; destruct_hyps; auto.
+    + rewrite -> adress_eqb_eq in *.
+    try (rewrite -> adress_eqb_eq in *; subst; apply Forall_values_add; auto; easy); auto.
+
+    try (rewrite -> adress_eqb_eq in *; apply Forall_values_add).
+    
+  try ()
+  
+    - destruct_message; apply_message_lemma receive_some;
+    destruct_hyps; destruct new_state; cbn in *; try rewrite -> adress_eqb_eq in *;  subst; auto;
+    apply Forall_values_add; auto; try easy.
+    + rewrite H15. rewrite Forall_forall in IH.
+      apply IH. now eapply find_some_In_values. easy.
+      clear H5 H7 H8 H9 H10 H11 H12 H13 H14.
+
+        eapply find_some_In_values.
+      
+      
+      
+      
+      apply  apply FMap.In_elements. apply base.elem_of_list_In. easy. apply H in IH. 
+     +   rewrite -> In_values_find_some adress_eqb_eq in *.  subst.
       apply Forall_elements_add; auto. easy.
+    + destruct_hyps. destruct new_state; cbn in *. subst.
+    apply Forall_elements_add; auto. rewrite -> adress_eqb_eq in *. easy. subst. apply .eqb_eq in H5. easy. easy.  easy.*)
+  - admit.
+  - instantiate (DeployFacts := fun _ _ => True).
+    instantiate (AddBlockFacts := fun _ _ _ _ _ _ => True). Locate unset_all.
+
+    unset_all; subst; cbn.
+    destruct_chain_step; auto.
+    destruct_action_eval; auto.
+    intros * contract_deployed ?.
+    split.
+    + admit.
+    + 
+    + auto. easy.
+
+    + admit.
+    + admit.
+    destruct_chain_step; auto. rewrite H0, H1. subst. cbn.
+
+
+
+
 Lemma no_self_calls : forall chain_state contract_address,
   reachable chain_state ->
   env_contracts chain_state contract_address = Some (contract : WeakContract) ->
@@ -1064,7 +1174,8 @@ Proof.
     clear IH.
     (*instantiate (CallFacts := fun _ ctx state _ _ => 
         state.(seller <> ctx_contract_address ctx)
-    /\ fundDeposit state <> ctx_contract_address ctx).*)
+    /\ Forall (fun purchase => purchase.(buyer) <> ctx_contract_address ctx)
+    (FMap.values state.(purchases)) <> ctx_contract_address ctx).*)
 
     destruct_message; apply_message_lemma receive_some; auto;
     try now rewrite_var receive_some new_acts.
