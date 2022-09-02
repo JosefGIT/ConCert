@@ -144,3 +144,6 @@ ecommerce/tests/EcommerceTests.v
 ecommerce/tests/EcommerceGens.v
 ecommerce/EcommerceFixed.v
 ecommerce/EcommerceFixedCorrect.v
+ecommerce/tests/EcommerceFixedPrinters.v
+ecommerce/tests/EcommerceFixedTests.v
+ecommerce/tests/EcommerceGens.v
