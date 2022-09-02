@@ -293,16 +293,16 @@ Definition seller_counter_dispute_action ctx state chain purchaseId random_bit
   
 (* Aux for [seller_update_listings_action] *)
 Definition no_active_purchase_for_itemId state _itemId :=
-  let all_key_purchases := FMap.elements state.(purchases) in
-  let key_purchases_for_itemId := filter (fun '(_, purchase) => (purchase.(itemId) =? _itemId)%nat)
-                              all_key_purchases in
+  let all_purchases := FMap.values state.(purchases) in
+  let purchases_for_itemId := filter (fun purchase => (purchase.(itemId) =? _itemId)%nat)
+                              all_purchases in
   forallb
-  (fun '(_, purchase) =>
+  (fun purchase =>
     match purchase.(purchase_state) with
     | completed | rejected | failed => true
     | _ => false
     end)
-  key_purchases_for_itemId.
+  purchases_for_itemId.
 
 (* Is it possible to iterate FMaps? *)
 Definition seller_update_listings_action ctx state itemId descr value

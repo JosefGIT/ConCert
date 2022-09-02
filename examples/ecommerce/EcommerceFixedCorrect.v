@@ -24,7 +24,6 @@ Arguments hash_purchaseId : simpl never.
 Ltac destruct_message :=
   match goal with
   | receive_some : context[receive _ _ _ _ ?msg = Some (_, _)] |- _ => destruct msg as [?m|]; try discriminate; destruct m
-  (* At the moment receive with "EcommerceFixed" prefix is also necessary *)
   | receive_some : context[EcommerceFixed.receive _ _ _ ?msg = Some (_, _)] |- _ => destruct msg as [?m|]; try discriminate; destruct m
   end.
 
@@ -867,21 +866,21 @@ Proof. easy. Qed.
 Lemma no_active_purchase_for_itemId_correct : forall state _itemId,
   no_active_purchase_for_itemId state _itemId = true
   <->
-  Forall (fun '(_, purchase) => 
+  Forall (fun purchase => 
                purchase.(itemId) <> _itemId
             \/ purchase.(purchase_state) = completed
             \/ purchase.(purchase_state) = rejected
             \/ purchase.(purchase_state) = failed)
-       (FMap.elements state.(purchases)).
+       (FMap.values state.(purchases)).
 Proof.
   intros *. split.
   - intros * no_active_purchase_true.
     unfold no_active_purchase_for_itemId in *.
-    induction (FMap.elements state.(purchases)) as [| [purchaseId purchase] key_purchases]; auto.
+    induction (FMap.values state.(purchases)) as [| purchase purchases]; auto.
     rewrite cons_to_app in no_active_purchase_true.
     rewrite filter_app in no_active_purchase_true; cbn in *.
     apply Forall_cons.
-    + clear IHkey_purchases.
+    + clear IHpurchases.
     (* Destruct appropriate purchase conditions. *)
       destruct ((purchase.(itemId) =? _itemId)%nat) eqn:is_itemId; cbn in *;
       destruct (purchase_state_eq purchase.(purchase_state) completed) eqn:state_completed;
@@ -894,7 +893,7 @@ Proof.
       * apply andb_true_iff in no_active_purchase_true; destruct no_active_purchase_true as [purchase_states _].
         destruct (purchase.(purchase_state)); try discriminate.
       * left. now apply beq_nat_false.
-    + apply IHkey_purchases.
+    + apply IHpurchases.
       (* Destruct appropriate purchase conditions. *)
       destruct ((purchase.(itemId) =? _itemId)%nat) eqn:is_itemId; cbn in *;
       destruct (purchase_state_eq purchase.(purchase_state) completed) eqn:state_completed;
@@ -908,7 +907,7 @@ Proof.
       apply andb_true_iff in no_active_purchase_true; destruct no_active_purchase_true as [H1 H2]; try easy.
   - intros forall_purchases.
     unfold no_active_purchase_for_itemId.
-    induction (FMap.elements state.(purchases)) as [| [purchaseId purchase] key_purchases IH_key_purchases]; auto.
+    induction (FMap.values state.(purchases)) as [| purchase key_purchases IHpurchases]; auto.
     rewrite cons_to_app in forall_purchases.
     apply Forall_app in forall_purchases.
     destruct ((purchase.(itemId) =? _itemId)%nat) eqn:is_itemId;
@@ -920,8 +919,8 @@ Proof.
         apply Forall_inv in H. destruct H as [neq_itemId | [p_state | [p_state | p_state]]];
         try now rewrite p_state.
         apply Nat.eqb_eq in is_itemId. lia.
-      * now apply IH_key_purchases.
-    + now apply IH_key_purchases.
+      * now apply IHpurchases.
+    + now apply IHpurchases.
 Qed.
 
 
@@ -929,12 +928,12 @@ Qed.
 Lemma seller_update_listings_correct : forall chain ctx prev_state new_state new_acts _itemId upd_description upd_value,
   EcommerceFixed.receive chain ctx prev_state (Some (seller_update_listings _itemId upd_description upd_value)) = Some (new_state, new_acts)
   <->
-  Forall (fun '(_, purchase) => 
+  Forall (fun purchase => 
                purchase.(itemId) <> _itemId
             \/ purchase.(purchase_state) = completed
             \/ purchase.(purchase_state) = rejected
             \/ purchase.(purchase_state) = failed)
-       (FMap.elements prev_state.(purchases))
+       (FMap.values prev_state.(purchases))
   /\ (ctx.(ctx_from) =? prev_state.(seller))%address = true
   /\ FMap.add _itemId {| item_value := upd_value; item_description := upd_description |} prev_state.(listings) = new_state.(listings)
   /\ prev_state.(purchases) = new_state.(purchases)
