@@ -86,7 +86,7 @@ Definition gEcommerceFixedAction (env : Env): GOpt Action :=
           end
       | _ => returnGen None
       end);
-      (1% nat, (* Additional update listings here after a request to show error in property-based testing. *)
+      (1% nat,
                value <- bindGen (choose (1, 5)%Z) returnGenSome ;;  
                call state.(seller) 0 (seller_update_listings itemId "updated description" value)
       )
