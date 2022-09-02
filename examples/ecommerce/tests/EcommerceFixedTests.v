@@ -69,6 +69,7 @@ Definition sum_act_transfer (acts : list ActionBody) :=
                     | _ => 0
                     end) acts.
 
+(* This one is probably not necessary since the purchase will always exist in these tests *)
 Definition purchase_exists (state : EcommerceFixed.State) (msg : EcommerceFixed.Msg) : bool :=
   match FMap.find purchaseId state.(purchases) with
   | Some _ => true
@@ -112,3 +113,35 @@ Definition amount_sent_is_item_value_of_purchase
   {{ amount_sent_is_item_value_of_purchase }}
 ). *)
 (* +++ Passed 10000 tests (0 discards) *)
+
+Definition is_purchase_state (purchase_state_goal : EcommerceFixed.PurchaseState) (chain_state : ChainState) :=
+  match get_contract_state EcommerceFixed.State chain_state ecommerce_contract_addr with
+  | Some state =>
+      match FMap.find purchaseId state.(purchases) with
+          | Some purchase => purchase_state_eq purchase.(purchase_state) purchase_state_goal
+          | _ => false
+      end
+  | None => false (* should never occur *)
+  end.
+(* on purchase initialization (that is purchase with state [request_purchase])
+   all states are reachable for the purchae*)
+(*QuickChick (ecommerce_chainbuilder ~~> is_purchase_state EcommerceFixed.accepted).
+QuickChick (ecommerce_chainbuilder ~~> is_purchase_state EcommerceFixed.rejected).
+QuickChick (ecommerce_chainbuilder ~~> is_purchase_state EcommerceFixed.delivered).
+QuickChick (ecommerce_chainbuilder ~~> is_purchase_state EcommerceFixed.completed).*)
+QuickChick (ecommerce_chainbuilder ~~> is_purchase_state EcommerceFixed.dispute).
+QuickChick (ecommerce_chainbuilder ~~> is_purchase_state EcommerceFixed.counter).
+
+(*QuickChick (ecommerce_chainbuilder ~~> is_purchase_state EcommerceFixed.failed).*)
+
+(*
+Inductive PurchaseState :=
+  | requested
+  | accepted
+  | rejected
+  | delivered
+  | completed
+  | dispute
+  | counter
+  | failed.
+**)
