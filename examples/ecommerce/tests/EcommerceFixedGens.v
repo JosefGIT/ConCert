@@ -64,7 +64,7 @@ Definition gEcommerceFixedAction (env : Env): GOpt Action :=
                 (* buyer_confirm_delivery || buyer_dispute_delivery || seller_call_timeout *)
                 backtrack [
                     (1%nat, call purchase.(buyer) 0 (buyer_confirm_delivery purchaseId));
-                    (1%nat, call purchase.(buyer) 0 (buyer_dispute_delivery purchaseId buyer_dispute_delivery_commmitment));
+                    (1%nat, call purchase.(buyer) _item.(item_value) (buyer_dispute_delivery purchaseId buyer_dispute_delivery_commmitment));
                     (4%nat, call state.(seller) 0 (seller_call_timeout purchaseId))
                 ]
           | dispute =>
@@ -73,7 +73,7 @@ Definition gEcommerceFixedAction (env : Env): GOpt Action :=
                 backtrack[
                     (1%nat, call purchase.(buyer) 0 (buyer_call_timeout purchaseId));
                     (1%nat, call state.(seller) 0 (seller_forfeit_dispute purchaseId));
-                    (3%nat, call state.(seller) 0 (seller_counter_dispute purchaseId random_bit))
+                    (3%nat, call state.(seller) _item.(item_value) (seller_counter_dispute purchaseId random_bit))
                 ]
           | counter =>
                 (* buyer_open_commitment || seller_call_timeout*)

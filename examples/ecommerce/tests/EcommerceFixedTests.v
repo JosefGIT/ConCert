@@ -125,23 +125,17 @@ Definition is_purchase_state (purchase_state_goal : EcommerceFixed.PurchaseState
   end.
 (* on purchase initialization (that is purchase with state [request_purchase])
    all states are reachable for the purchae*)
-(*QuickChick (ecommerce_chainbuilder ~~> is_purchase_state EcommerceFixed.accepted).
+(*QuickChick (ecommerce_chainbuilder ~~> is_purchase_state EcommerceFixed.requested).
+QuickChick (ecommerce_chainbuilder ~~> is_purchase_state EcommerceFixed.accepted).
 QuickChick (ecommerce_chainbuilder ~~> is_purchase_state EcommerceFixed.rejected).
 QuickChick (ecommerce_chainbuilder ~~> is_purchase_state EcommerceFixed.delivered).
-QuickChick (ecommerce_chainbuilder ~~> is_purchase_state EcommerceFixed.completed).*)
+QuickChick (ecommerce_chainbuilder ~~> is_purchase_state EcommerceFixed.completed).
 QuickChick (ecommerce_chainbuilder ~~> is_purchase_state EcommerceFixed.dispute).
 QuickChick (ecommerce_chainbuilder ~~> is_purchase_state EcommerceFixed.counter).
+QuickChick (ecommerce_chainbuilder ~~> is_purchase_state EcommerceFixed.failed).*)
+(* Success - found witness satisfying the predicate! *)
 
-(*QuickChick (ecommerce_chainbuilder ~~> is_purchase_state EcommerceFixed.failed).*)
 
-(*
-Inductive PurchaseState :=
-  | requested
-  | accepted
-  | rejected
-  | delivered
-  | completed
-  | dispute
-  | counter
-  | failed.
-**)
+(* TODO? *)
+(* If all purchases are of state [failed] [completed] or [rejected] then the contract should
+   contain no money. *)
