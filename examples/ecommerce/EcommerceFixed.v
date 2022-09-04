@@ -63,6 +63,7 @@ Record Purchase :=
     notes : string;
     purchase_state : PurchaseState;
     buyer : Address;
+    pool : Amount;
   }.
 
 MetaCoq Run (make_setters Purchase).
@@ -144,6 +145,7 @@ Definition buyer_request_purchase_action (chain : Chain) (ctx : ContractCallCont
       notes := notes;
       purchase_state := requested;
       buyer := _buyer;
+      pool := ctx.(ctx_amount);
     |} in
   let updated_purchases := (FMap.add purchaseId purchase (purchases state) :  purchases_type) in
   Some (state<| purchases := updated_purchases |>, []).
@@ -154,11 +156,10 @@ Definition buyer_abort_action (ctx : ContractCallContext) (state : State) (purch
     do purchase <- find_purchase purchaseId current_purchases;
     do required_true (purchase_state_eq purchase.(purchase_state) requested);
     do required_true (ctx.(ctx_from) =? purchase.(buyer))%address;
-    let updated_purchase := purchase <| purchase_state := failed |> in 
+    let updated_purchase := purchase <| purchase_state := failed |> <| pool := 0 |> in 
     let updated_purchases := FMap.add purchaseId updated_purchase current_purchases in
-    do requested_item <- find_item purchase.(itemId) state.(listings);
     Some (state <| purchases := updated_purchases|>,
-          [act_transfer (purchase.(buyer)) requested_item.(item_value)]).
+          [act_transfer (purchase.(buyer)) purchase.(pool)]).
 
 Definition buyer_confirm_delivery_action ctx state purchaseId
                                        : option (State * list ActionBody) :=
@@ -166,11 +167,10 @@ Definition buyer_confirm_delivery_action ctx state purchaseId
     do purchase <- find_purchase purchaseId current_purchases;
     do required_true (purchase_state_eq purchase.(purchase_state) delivered);
     do required_true (ctx.(ctx_from) =? purchase.(buyer))%address;
-    let updated_purchase := purchase <| purchase_state := completed |> in 
+    let updated_purchase := purchase <| purchase_state := completed |> <| pool := 0|> in 
     let updated_purchases := FMap.add purchaseId updated_purchase current_purchases in
-    do requested_item <- find_item purchase.(itemId) state.(listings);
     Some (state <| purchases := updated_purchases|>,
-          [act_transfer (state.(seller)) requested_item.(item_value)]).
+          [act_transfer (state.(seller)) purchase.(pool)]).
 
 Definition buyer_dispute_delivery_action ctx state chain purchaseId commitment
           : option (State * list ActionBody) :=
@@ -194,11 +194,10 @@ Definition buyer_call_timeout_action ctx state chain purchaseId
                  || purchase_state_eq purchase.(purchase_state) accepted);
   do required_true (ctx.(ctx_from) =? purchase.(buyer))%address;
   do required_true (purchase.(last_block) + state.(timeout) <? chain.(current_slot))%nat;
-  let updated_purchase := purchase <| purchase_state := failed |> in 
+  let updated_purchase := purchase <| purchase_state := failed |> <| pool := 0 |> in 
   let updated_purchases := FMap.add purchaseId updated_purchase current_purchases in
-  do requested_item <- find_item purchase.(itemId) state.(listings);
   Some (state <| purchases := updated_purchases|>,
-        [act_transfer (purchase.(buyer)) requested_item.(item_value)]).
+        [act_transfer (purchase.(buyer)) purchase.(pool)]).
     
 Definition buyer_open_commitment_action ctx state purchaseId buyer_bit nonce
   : option (State * list ActionBody) :=
@@ -207,12 +206,12 @@ Definition buyer_open_commitment_action ctx state purchaseId buyer_bit nonce
   do required_true (ctx.(ctx_from) =? purchase.(buyer))%address;
   do required_true (purchase_state_eq purchase.(purchase_state) counter);
   do required_true ((hash_bid purchaseId buyer_bit nonce =? purchase.(commit))%N);
-  let updated_purchase := purchase <| purchase_state := failed |> in
+  let purchase_pool := purchase.(pool) in
+  let updated_purchase := purchase <| purchase_state := failed |> <| pool := 0 |> in
   let updated_purchases := FMap.add purchaseId updated_purchase current_purchases in
   let target_transaction := if (eqb purchase.(seller_bit) buyer_bit) then purchase.(buyer) else state.(seller) in
-  do requested_item <- find_item purchase.(itemId) state.(listings);
   Some (state <| purchases := updated_purchases |>,
-        [act_transfer target_transaction (2 * requested_item.(item_value))]).
+        [act_transfer target_transaction purchase_pool]).
 
 Definition seller_call_timeout_action ctx state chain purchaseId
   : option (State * list ActionBody) :=
@@ -222,11 +221,10 @@ Definition seller_call_timeout_action ctx state chain purchaseId
                  || purchase_state_eq purchase.(purchase_state) counter);
   do required_true (ctx.(ctx_from) =? state.(seller))%address;
   do required_true (purchase.(last_block) + state.(timeout) <? chain.(current_slot))%nat;
-  let updated_purchase := purchase <| purchase_state := completed |> in 
+  let updated_purchase := purchase <| purchase_state := completed |> <| pool := 0 |> in 
   let updated_purchases := FMap.add purchaseId updated_purchase current_purchases in
-  do requested_item <- find_item purchase.(itemId) state.(listings);
   Some (state <| purchases := updated_purchases|>,
-        [act_transfer (state.(seller)) requested_item.(item_value)]).
+        [act_transfer (state.(seller)) purchase.(pool)]).
 
 Definition seller_reject_contract_action ctx state purchaseId
   : option (State * list ActionBody) :=
@@ -234,11 +232,10 @@ Definition seller_reject_contract_action ctx state purchaseId
   do purchase <- find_purchase purchaseId current_purchases;
   do required_true (purchase_state_eq purchase.(purchase_state) requested);
   do required_true (ctx.(ctx_from) =? state.(seller))%address;
-  let updated_purchase := purchase <| purchase_state := rejected |> in 
+  let updated_purchase := purchase <| purchase_state := rejected |> <| pool := 0|> in 
   let updated_purchases := FMap.add purchaseId updated_purchase current_purchases in
-  do requested_item <- find_item purchase.(itemId) state.(listings);
   Some (state <| purchases := updated_purchases|>,
-        [act_transfer (purchase.(buyer)) requested_item.(item_value)]).
+        [act_transfer (purchase.(buyer)) purchase.(pool)]).
 
 
 Definition seller_accept_contract_action ctx state chain purchaseId
@@ -269,11 +266,10 @@ Definition seller_forfeit_dispute_action ctx state purchaseId
   do purchase <- find_purchase purchaseId current_purchases;
   do required_true (purchase_state_eq purchase.(purchase_state) dispute);
   do required_true (ctx.(ctx_from) =? state.(seller))%address;
-  let updated_purchase := purchase <| purchase_state := failed |> in 
+  let updated_purchase := purchase <| purchase_state := failed |> <| pool := 0|> in 
   let updated_purchases := FMap.add purchaseId updated_purchase current_purchases in
-  do requested_item <- find_item purchase.(itemId) state.(listings);
   Some (state <| purchases := updated_purchases|>,
-        [act_transfer (purchase.(buyer)) requested_item.(item_value)]).
+        [act_transfer (purchase.(buyer)) purchase.(pool)]).
 
 Definition seller_counter_dispute_action ctx state chain purchaseId random_bit
   : option (State * list ActionBody) :=
@@ -286,7 +282,8 @@ Definition seller_counter_dispute_action ctx state chain purchaseId random_bit
   do required_true (money_sent =? disputed_item.(item_value));
   let updated_purchase := purchase <| purchase_state := counter |>
                                    <| last_block := chain.(current_slot) |>
-                                   <| seller_bit := random_bit |> in 
+                                   <| seller_bit := random_bit |>
+                                   <| pool := purchase.(pool) + money_sent |> in 
   let updated_purchases := FMap.add purchaseId updated_purchase current_purchases in
   Some (state <| purchases := updated_purchases|>, []).
 
@@ -343,6 +340,7 @@ Definition init (chain : Chain) (ctx : ContractCallContext) (setup : Setup)
   let listings := setup_listings setup in
   let timeout := setup_timeout setup in
   do required_true (0 <? timeout)%nat;
+  do required_true (ctx.(ctx_amount) =? 0);
   Some {|
     seller := seller;
     listings := listings;

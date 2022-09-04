@@ -43,6 +43,7 @@ Instance showPurchase : Show Purchase :=
      ++ "notes: " ++ show purchase.(notes) ++ sep
      ++ "purchase_state: " ++ show purchase.(purchase_state) ++ sep
      ++ "buyer: " ++ show purchase.(buyer)
+     ++ "pool: " ++ show purchase.(pool)
      ++ "}"
 }.
 

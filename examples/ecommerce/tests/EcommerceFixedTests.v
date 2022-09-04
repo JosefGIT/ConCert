@@ -61,7 +61,7 @@ Module TN := TestNotations NotationInfo.
 Import TN.
 
 (* Sample to check quality of generated chains. *)
-Sample gChain.
+(* Sample gChain. *)
 
 Definition sum_act_transfer (acts : list ActionBody) :=
   sumZ (fun act => match act with 
