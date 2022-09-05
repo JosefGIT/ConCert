@@ -110,7 +110,8 @@ Inductive Msg :=
 
 Definition find_item itemId (listings : listings_type) := FMap.find itemId listings.
 Definition find_purchase purchaseId (purchases : purchases_type) := FMap.find purchaseId purchases.
-
+Definition required_amount_zero ctx := required_true (ctx.(ctx_amount) =? 0).
+Definition required_no_self_call ctx := required_false (ctx.(ctx_from) =? ctx.(ctx_contract_address))%address.
 Definition purchase_exists purchaseId purchases :=
     match find_purchase purchaseId purchases with
     | Some _ => true
@@ -129,6 +130,7 @@ Definition hash_bid (id : N) (buyer_bit : bool) (nonce : N) : N :=
 Definition buyer_request_purchase_action (chain : Chain) (ctx : ContractCallContext) (state : State)
                                          (_itemId : nat) (notes : string)
                                          : option (State * list ActionBody) :=
+  do required_no_self_call ctx;                                      
   let _buyer := ctx_from ctx in
   let current_listings := listings state in
   do requested_item <- find_item _itemId current_listings; (* If item with _itemId does not exist, do nothing *)
@@ -152,6 +154,7 @@ Definition buyer_request_purchase_action (chain : Chain) (ctx : ContractCallCont
   
 Definition buyer_abort_action (ctx : ContractCallContext) (state : State) (purchaseId : purchase_key_type)
   : option (State * list ActionBody) :=
+    do required_amount_zero ctx;
     let current_purchases := state.(purchases) in
     do purchase <- find_purchase purchaseId current_purchases;
     do required_true (purchase_state_eq purchase.(purchase_state) requested);
@@ -163,6 +166,7 @@ Definition buyer_abort_action (ctx : ContractCallContext) (state : State) (purch
 
 Definition buyer_confirm_delivery_action ctx state purchaseId
                                        : option (State * list ActionBody) :=
+  do required_amount_zero ctx;
   let current_purchases := state.(purchases) in
     do purchase <- find_purchase purchaseId current_purchases;
     do required_true (purchase_state_eq purchase.(purchase_state) delivered);
@@ -175,11 +179,10 @@ Definition buyer_confirm_delivery_action ctx state purchaseId
 Definition buyer_dispute_delivery_action ctx state chain purchaseId commitment
           : option (State * list ActionBody) :=
   let current_purchases := state.(purchases) in
+  do required_amount_zero ctx;
   do purchase <- find_purchase purchaseId current_purchases;
   do required_true (purchase_state_eq purchase.(purchase_state) delivered);
   do required_true (ctx.(ctx_from) =? purchase.(buyer))%address;
-  do disputed_item <- find_item purchase.(itemId) state.(listings);
-  do required_true (ctx.(ctx_amount) =? disputed_item.(item_value));
   let updated_purchase := purchase <| purchase_state := dispute |>
                                    <| commit := commitment |>
                                    <| last_block := current_slot chain |> in 
@@ -188,6 +191,7 @@ Definition buyer_dispute_delivery_action ctx state chain purchaseId commitment
 
 Definition buyer_call_timeout_action ctx state chain purchaseId
   : option (State * list ActionBody) :=
+  do required_amount_zero ctx;
   let current_purchases := state.(purchases)  in
   do purchase <- find_purchase purchaseId current_purchases;
   do required_true (purchase_state_eq purchase.(purchase_state) dispute
@@ -201,6 +205,7 @@ Definition buyer_call_timeout_action ctx state chain purchaseId
     
 Definition buyer_open_commitment_action ctx state purchaseId buyer_bit nonce
   : option (State * list ActionBody) :=
+  do required_amount_zero ctx;
   let current_purchases := state.(purchases) in
   do purchase <- find_purchase purchaseId current_purchases;
   do required_true (ctx.(ctx_from) =? purchase.(buyer))%address;
@@ -215,6 +220,7 @@ Definition buyer_open_commitment_action ctx state purchaseId buyer_bit nonce
 
 Definition seller_call_timeout_action ctx state chain purchaseId
   : option (State * list ActionBody) :=
+  do required_amount_zero ctx;
   let current_purchases := state.(purchases) in
   do purchase <- find_purchase purchaseId current_purchases;
   do required_true (purchase_state_eq purchase.(purchase_state) delivered
@@ -228,6 +234,7 @@ Definition seller_call_timeout_action ctx state chain purchaseId
 
 Definition seller_reject_contract_action ctx state purchaseId
   : option (State * list ActionBody) :=
+  do required_amount_zero ctx;
   let current_purchases := state.(purchases) in
   do purchase <- find_purchase purchaseId current_purchases;
   do required_true (purchase_state_eq purchase.(purchase_state) requested);
@@ -240,6 +247,7 @@ Definition seller_reject_contract_action ctx state purchaseId
 
 Definition seller_accept_contract_action ctx state chain purchaseId
   : option (State * list ActionBody) :=
+  do required_amount_zero ctx;
   let current_purchases := state.(purchases) in
   do purchase <- find_purchase purchaseId current_purchases;
   do required_true (purchase_state_eq purchase.(purchase_state) requested);
@@ -251,6 +259,7 @@ Definition seller_accept_contract_action ctx state chain purchaseId
 
 Definition seller_item_was_delivered_action ctx state chain purchaseId
   : option (State * list ActionBody) :=
+  do required_amount_zero ctx;
   let current_purchases := state.(purchases)  in
   do purchase <- find_purchase purchaseId current_purchases;
   do required_true (purchase_state_eq purchase.(purchase_state) accepted);
@@ -262,6 +271,7 @@ Definition seller_item_was_delivered_action ctx state chain purchaseId
 
 Definition seller_forfeit_dispute_action ctx state purchaseId
   : option (State * list ActionBody) :=
+  do required_amount_zero ctx;
   let current_purchases := state.(purchases) in
   do purchase <- find_purchase purchaseId current_purchases;
   do required_true (purchase_state_eq purchase.(purchase_state) dispute);
@@ -289,21 +299,24 @@ Definition seller_counter_dispute_action ctx state chain purchaseId random_bit
 
   
 (* Aux for [seller_update_listings_action] *)
+(* We use "elements" instead of "values" for better proof support on finite maps. *)
 Definition no_active_purchase_for_itemId state _itemId :=
-  let all_purchases := FMap.values state.(purchases) in
-  let purchases_for_itemId := filter (fun purchase => (purchase.(itemId) =? _itemId)%nat)
-                              all_purchases in
+  let all_key_purchases := FMap.elements state.(purchases) in
+  let key_purchases_for_itemId := filter (fun '(_, purchase) => (purchase.(itemId) =? _itemId)%nat)
+                              all_key_purchases in
   forallb
-  (fun purchase =>
+  (fun '(_, purchase) =>
     match purchase.(purchase_state) with
     | completed | rejected | failed => true
     | _ => false
     end)
-  purchases_for_itemId.
+  key_purchases_for_itemId.
 
 (* Is it possible to iterate FMaps? *)
 Definition seller_update_listings_action ctx state itemId descr value
   : option (State * list ActionBody) :=
+  do required_amount_zero ctx;
+  do required_true (0 <=? value);
   do required_true (ctx.(ctx_from) =? state.(seller))%address;
   do required_true (no_active_purchase_for_itemId state itemId);
   let current_listings := state.(listings) in
@@ -336,11 +349,12 @@ Definition receive (chain : Chain) (ctx : ContractCallContext)
 
 Definition init (chain : Chain) (ctx : ContractCallContext) (setup : Setup)
   : option State :=
+  do required_no_self_call ctx;
   let seller := ctx_from ctx in
   let listings := setup_listings setup in
   let timeout := setup_timeout setup in
   do required_true (0 <? timeout)%nat;
-  do required_true (ctx.(ctx_amount) =? 0);
+  do required_amount_zero ctx;
   Some {|
     seller := seller;
     listings := listings;
