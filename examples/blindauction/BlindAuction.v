@@ -45,10 +45,6 @@ Record State := build_state {
   pending_returns : FMap Address Amount
 }.
 
-
-Check FMap.find.
-Compute (@FMap.find nat Amount (FMap nat Amount) _ (123%nat) (FMap.empty : FMap nat Amount)).
-
 MetaCoq Run (make_setters State).
 
 Record Setup := build_setup{
@@ -62,7 +58,6 @@ Inductive Msg :=
 | reveal (values : list Amount) (fakes : list bool) (secrets : list positive)
 | withdraw
 | auction_end.
-
 
 Open Scope Z.
 
