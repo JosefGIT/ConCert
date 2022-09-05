@@ -132,9 +132,12 @@ crowdfunding/CrowdfundingCertifiedExtraction.v
 
 -Q blindauction ConCert.Examples.BlindAuction
 blindauction/BlindAuction.v
+blindauction/BlindAuctionCorrect.v
 blindauction/tests/BlindAuctionPrinters.v
 blindauction/tests/BlindAuctionTests.v
 blindauction/tests/BlindAuctionGens.v
+blindauction/BlindAuctionFixed.v
+blindauction/BlindAuctionFixedCorrect.v
 
 -Q ecommerce ConCert.Examples.Ecommerce
 ecommerce/Ecommerce.v
