@@ -999,9 +999,9 @@ Lemma seller_update_listings_correct : forall chain ctx prev_state new_state new
   /\ (ctx.(ctx_from) =? prev_state.(seller))%address = true
   /\ FMap.add _itemId {| item_value := upd_value; item_description := upd_description |} prev_state.(listings) = new_state.(listings)
   /\ 0 <= upd_value
-  /\ prev_state.(purchases) = new_state.(purchases)
-  /\ prev_state.(seller) = new_state.(seller)
-  /\ prev_state.(timeout) = new_state.(timeout)
+  /\ new_state.(purchases) = prev_state.(purchases)
+  /\ new_state.(seller) = prev_state.(seller)
+  /\ new_state.(timeout) = prev_state.(timeout)
   /\ ctx.(ctx_amount) = 0
   /\ new_acts = []
   .
@@ -1021,7 +1021,7 @@ Proof.
     rewrite from_seller; cbn.
     apply no_active_purchase_for_itemId_correct in forall_purchases.
     rewrite forall_purchases; cbn.
-    rewrite item_add, const_seller, const_purchases, const_timeout, empty_acts.
+    rewrite item_add, <- const_seller, <- const_purchases, <- const_timeout, empty_acts.
     now destruct new_state.
 Qed.
 
@@ -1215,20 +1215,6 @@ Proof.
   lia.
 Qed.
 
-
-(*Lemma deployed_implies bstate caddr :
-  reachable bstate ->
-  env_contracts bstate caddr = Some (contract : WeakContract) ->
-  exists cstate,
-       contract_state bstate caddr = Some cstate
-    /\ cstate.(seller) <> caddr.
-Proof.
-  contract_induction; intros; auto.
-  - cbn in init_some. receive_simpl init_some.
-    inversion init_some; cbn in *.
-    destruct_address_eq. easy. apply init_correct in init_some; auto.
-    easy. destruct_address_eq. *)
-
 Lemma seller_not_contract_addr chain_state caddr:
   reachable chain_state ->
   env_contracts chain_state caddr = Some (contract : WeakContract) ->
@@ -1290,34 +1276,29 @@ Proof.
         | [H : new_state.(purchases) = _ |- _] => rewrite H
         end
     ); cbn;
-    try (eapply (buyer_not_caddr_update _ _ x x0); auto; now apply (Forall_elements_f _ _ id x) in IH).
-    + assert (perm : Permutation (FMap.elements (FMap.add x x0 (purchases prev_state))) ((x, x0)::(FMap.elements prev_state.(purchases)))). { now apply FMap.elements_add. }
-      setoid_rewrite perm. apply Forall_cons; auto.
-      now rewrite H12.
-    + 
-    + eapply (buyer_not_caddr_update _ _ x x0); auto.
-      now apply (Forall_elements_f _ _ id x) in IH.
-    + eapply (buyer_not_caddr_update _ _ x x0); auto.
-    now apply (Forall_elements_f _ _ id x) in IH.  auto; cbn in *.
-      
-        
-      * now rewrite H15.
-      * 
-      apply (buyer_not_caddr_update _ _ x x0 _). auto.
-      by auto. constructor.   destruct x0; destruct x; cbn in *.
-     assert (perm : Permutation (FMap.elements (FMap.add id x0 (purchases prev_state))) ((id, x0)::(FMap.elements prev_state.(purchases)))). { now apply FMap.elements_add. }
-    
-    assert (perm12 : Permutation (FMap.elements (FMap.add x x0 (purchases prev_state))) ((id, x0)::(FMap.elements prev_state.(purchases)))). { now apply FMap.elements_add. }
+    try (eapply (buyer_not_caddr_update _ _ x x0); auto; now apply (Forall_elements_f _ _ id x) in IH); auto.
+    (* request_purchase *)
+    assert (perm : Permutation (FMap.elements (FMap.add x x0 (purchases prev_state))) ((x, x0)::(FMap.elements prev_state.(purchases)))). { now apply FMap.elements_add. }
     setoid_rewrite perm. apply Forall_cons; auto.
-    congruence.
-  - destruct_message; apply_message_lemma receive_some; destruct_hyps; auto; congruence.
+    now rewrite H12.
+    (* almost identical to non-recursive calls *)
+  - destruct_message; apply_message_lemma receive_some; destruct_hyps; auto;
+    try(
+        match goal with
+        | [H : new_state.(purchases) = _ |- _] => rewrite H
+        end
+    ); cbn;
+    try (eapply (buyer_not_caddr_update _ _ x x0); auto; now apply (Forall_elements_f _ _ id x) in IH); auto.
+    (* request_purchase *)
+    assert (perm : Permutation (FMap.elements (FMap.add x x0 (purchases prev_state))) ((x, x0)::(FMap.elements prev_state.(purchases)))). { now apply FMap.elements_add. }
+    setoid_rewrite perm. apply Forall_cons; auto.
   - no_facts_added.
 Qed. 
 
 (** Ecommerce never calls itself or sends transactions to itself. *)
 Lemma no_self_calls bstate caddr :
   reachable bstate ->
-  env_contracts bstate caddr = Some (contract : WeakContract) ->
+  env_contracts bstate caddr = Some (EcommerceFixed.contract : WeakContract) ->
   Forall (fun act_body =>
     match act_body with
     | act_transfer to _ => (to =? caddr)%address = false
@@ -1356,11 +1337,44 @@ Proof.
   - now rewrite <- perm.
   - instantiate (DeployFacts := fun _ _ => True).
     instantiate (AddBlockFacts := fun _ _ _ _ _ _ => True).
-    unset_all; subst; cbn in *.
+    unset_all; subst.
     destruct_chain_step; auto.
     destruct_action_eval; auto.
-    intros * contr ?. admit.
-Admitted.
+    intros * contract_dep ?. cbn. split.
+    + apply seller_not_contract_addr in contract_dep.
+      * now destruct_hyps.  
+      * now constructor.
+    + apply buyers_not_contract_addr in contract_dep.
+      * now destruct_hyps.  
+      * now constructor.
+Qed.
+
+Lemma no_self_calls' : forall bstate origin from_addr to_addr amount msg acts,
+  reachable bstate ->
+  env_contracts bstate to_addr = Some (contract : WeakContract) ->
+  chain_state_queue bstate = {|
+    act_origin := origin;
+    act_from := from_addr;
+    act_body :=
+      match msg with
+      | Some msg => act_call to_addr amount msg
+      | None => act_transfer to_addr amount
+      end
+  |} :: acts ->
+  from_addr <> to_addr.
+Proof.
+  intros * reach deployed queue.
+  apply no_self_calls in deployed as no_self_calls; auto.
+  unfold outgoing_acts in no_self_calls.
+  rewrite queue in no_self_calls.
+  cbn in no_self_calls.
+  destruct_address_eq; auto.
+  inversion_clear no_self_calls as [|? ? hd _].
+  destruct msg.
+  * congruence.
+  * now rewrite address_eq_refl in hd.
+Qed.
+
 
 Ltac no_self_calls_solve := now instantiate (CallFacts := fun _ ctx _ _ _ => ctx_from ctx <> ctx_contract_address ctx).
 
@@ -1371,7 +1385,7 @@ Lemma contract_balance_is_pool_sum : forall chain_state contract_addr,
      contract_state chain_state contract_addr = Some cstate
   /\ sumZ (fun '(_, purchase) => purchase.(pool)) (FMap.elements cstate.(purchases)) = env_account_balances chain_state contract_addr - (sumZ (fun act => act_body_amount act) (outgoing_acts chain_state contract_addr)).
 Proof.
-  contract_induction; intros; auto; cbn in *.
+  contract_induction; intros; auto; only 1-4 : cbn in *.
   - apply init_correct in init_some; auto. destruct_hyps. now rewrite H4, H0.
   - rewrite IH. lia.
   - destruct_message; apply_message_lemma receive_some; destruct_hyps; auto;
@@ -1389,7 +1403,7 @@ Proof.
     subst; cbn; rewrite IH; lia).
     + assert (perm : Permutation (FMap.elements (FMap.add x x0 (purchases prev_state))) ((x, x0)::(FMap.elements prev_state.(purchases)))). { now apply FMap.elements_add.  }
       rewrite (sumZ_permutation perm); cbn.
-      rewrite H8.
+      rewrite H9.
       (* For some reason this "remember" is necessary for rewriting IH. *)
       remember (sumZ (fun '(_, purchase) => pool purchase)
       (FMap.elements (purchases prev_state))) as tmp.
@@ -1397,14 +1411,18 @@ Proof.
     + destruct (eqb (x.(seller_bit)) (buyer_bit)); rewrite (sum_pool_add prev_state.(purchases) id x x0) by auto.
       * rewrite H17 by auto. cbn. lia.
       * rewrite H18 by auto. cbn. lia.
-    + rewrite <- H3. subst. cbn. rewrite IH. lia.
+    + rewrite H3. subst. cbn. rewrite IH. lia.
   - no_self_calls_solve.
   - now rewrite <- perm.
   - instantiate (DeployFacts := fun _ _ => True).
     instantiate (AddBlockFacts := fun _ _ _ _ _ _ => True).
-    unset_all; subst; cbn in *.
+    unset_all; subst.
     destruct_chain_step; auto.
-    destruct_action_eval; auto. admit. 
+    destruct_action_eval; auto.
+    intros * contr_deployed ?. cbn.
+    subst.
+    eapply no_self_calls'; eauto.
+    now constructor.
 Qed.
 (* If timeout has reached for an active [Purchase], it is possible for someone to end the contract. *)
 (* All item values are greater than 0. *)
