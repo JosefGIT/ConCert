@@ -934,6 +934,7 @@ Lemma no_active_purchase_for_itemId_correct : forall state _itemId,
             \/ purchase.(purchase_state) = failed)
        (FMap.elements state.(purchases)).
 Proof. Admitted.
+(* DO NOT DELETE BELOW!! *)
   (*
   intros *. split.
   - intros * no_active_purchase_true.

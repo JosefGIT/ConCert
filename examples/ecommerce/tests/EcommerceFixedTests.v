@@ -7,6 +7,7 @@ From ConCert.Execution.Test Require Import QCTest.
 From ConCert.Execution Require Import ResultMonad.
 From ConCert.Examples.Ecommerce Require Import EcommerceFixedGens.
 From ConCert.Examples.Ecommerce Require Import EcommerceFixedPrinters.
+From ConCert.Execution Require Import Serializable.
 Require Import Extras.
 From Coq Require Import List.
 From Coq Require Import ZArith.
@@ -156,8 +157,6 @@ QuickChick (ecommerce_chainbuilder ~~> is_purchase_state EcommerceFixed.failed).
 (* TODO? *)
 (* If all purchases are of state [failed] [completed] or [rejected] then the contract should
    contain no money. *)
-
-From ConCert.Execution Require Import Serializable.
 
 Definition all_purchases_are_finished (cs : ChainState) : bool :=
   match cs.(env_contract_states) ecommerce_contract_addr with
