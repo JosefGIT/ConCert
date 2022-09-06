@@ -138,6 +138,9 @@ Module TN := TestNotations NotationInfo. Import TN.
     Therefore we test in both execution orders that there will never be
     callbacks with someone elses balance / incorrect balance.
 *)
+
+Definition no_precondition (cstate : Dexter2CPMM.State) (msg : Dexter2CPMM.Msg) : bool := true.
+
 Definition msg_is_balance_of_callback (cstate : Dexter2CPMM.State) (msg : Dexter2CPMM.Msg) : bool :=
   match msg with
   | FA2Token.receive_balance_of_param _ => true
@@ -231,4 +234,60 @@ QuickChick (forAllBlocks token_reserve_safe). *)
 
 (* Extract Constant DepthFirst => "true".
 QuickChick (forAllBlocks token_reserve_safe). *)
+(* +++ Passed 10000 tests (0 discards) *)
+
+Open Scope N.
+
+(* Liquidity share price never decreases as shown in:
+   https://research-development.nomadic-labs.com/progress-report-on-the-verification-of-liquidity-baking-smart-contracts.html#evolution-of-the-product-of-supplies *)
+Definition liquidity_share_price_never_decreases
+    (env : Environment)
+    (cctx : ContractCallContext)
+    (old_state : Dexter2CPMM.State)
+    (msg : Dexter2CPMM.Msg)
+    (result_opt : option (Dexter2CPMM.State * list ActionBody)) :=
+  match result_opt with
+  | Some (new_state, _) =>
+     checker
+     ((old_state.(tokenPool) * old_state.(xtzPool)) / (old_state.(lqtTotal) * old_state.(lqtTotal)) <=?
+     (new_state.(tokenPool) * new_state.(xtzPool)) / (new_state.(lqtTotal) * new_state.(lqtTotal)))
+  | _  => checker true
+  end.
+  
+(* Extract Constant DepthFirst => "false".
+QuickChick ({{no_precondition}} cpmm_contract_base_addr {{liquidity_share_price_never_decreases}}). *)
+(* +++ Passed 10000 tests (0 discards) *)
+
+(* Extract Constant DepthFirst => "true".
+QuickChick ({{no_precondition}} cpmm_contract_base_addr {{liquidity_share_price_never_decreases}}). *)
+(* +++ Passed 10000 tests (0 discards) *)
+
+(* These properties do not hold initially, but after holding once in the contract it should hold forever *)
+Definition tokens_invariants (state : Dexter2CPMM.State) : bool :=
+    let all_tokens_gt_zero := (0 <? state.(tokenPool)) && (0 <? state.(xtzPool)) && (0 <? state.(lqtTotal)) in
+    let product_reserves_gt_lqtTotalsq := state.(lqtTotal)*state.(lqtTotal) <=? state.(tokenPool) * state.(xtzPool) in
+    let lqtTotalsq_gt_zero := 0 <? state.(lqtTotal)*state.(lqtTotal) in
+    all_tokens_gt_zero || (lqtTotalsq_gt_zero && product_reserves_gt_lqtTotalsq).
+
+Definition P_token_invariants (state : Dexter2CPMM.State) (msg : Dexter2CPMM.Msg) : bool :=
+  tokens_invariants state.
+
+Definition Q_token_invariants
+  (env : Environment)
+  (cctx : ContractCallContext)
+  (old_state : Dexter2CPMM.State)
+  (msg : Dexter2CPMM.Msg)
+  (result_opt : option (Dexter2CPMM.State * list ActionBody)) :=
+    match result_opt with
+    | Some (new_state, _) => tokens_invariants new_state
+    | _ => true
+    end.
+
+(* Once [token_invariants] holds it should always hold. *)
+(* Extract Constant DepthFirst => "false".
+QuickChick ({{P_token_invariants}} cpmm_contract_base_addr {{Q_token_invariants}}). *)
+(* +++ Passed 10000 tests (0 discards) *)
+
+(* Extract Constant DepthFirst => "true".
+QuickChick ({{P_token_invariants}} cpmm_contract_base_addr {{Q_token_invariants}}). *)
 (* +++ Passed 10000 tests (0 discards) *)
