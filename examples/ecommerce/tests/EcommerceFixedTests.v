@@ -17,16 +17,10 @@ Section EcommerceFixedTestSetup.
   Definition ecommerce_contract_addr := contract_base_addr.
   Definition seller := creator.
   
-  (* In these tests we only consider a contract instance with one item and one purchase. *)
-  Definition item_1 := {|
-    item_value := 1;
-    item_description := "Item1"
-  |}.
-  
   Definition item1_Id := 42%nat.
   Definition setup :=
       {|
-        setup_listings := FMap.add item1_Id item_1 FMap.empty;(* FMap.add 2 item_2 (FMap.add 1 item_1 FMap.empty); *)
+        setup_listings := FMap.empty;
         setup_timeout := 3
       |}.
 
@@ -39,17 +33,12 @@ Section EcommerceFixedTestSetup.
       build_act creator creator (deploy_ecommerce)
     ]).
 
-  (* In EcommerceGens the request_purchase is set to be called happen in the second block, hence "2".
-     This purchaseId is used throughout these tests.
-  *)
-  Definition purchaseId := hash_purchaseId 2%nat person_1.
 End EcommerceFixedTestSetup.
 
 Module TestInfo <: EcommerceFixedGensInfo.
   Definition contract_addr := ecommerce_contract_addr.
-  Definition purchase_buyer := person_1.
-  Definition item1_Id := item1_Id.
-  Definition purchaseId := purchaseId.
+  Definition buyers := [person_1; person_2].
+  Definition item_ids := [1%nat; 2%nat].
 End TestInfo.
 Module MG := EcommerceFixedGens.EcommerceFixedGens TestInfo.
 Import MG.
@@ -62,7 +51,7 @@ Module TN := TestNotations NotationInfo.
 Import TN.
 
 (* Sample to check quality of generated chains. *)
-(* Sample gChain. *)
+Sample gChain.
 
 Definition sum_act_transfer (acts : list ActionBody) :=
   sumZ (fun act => match act with 
@@ -70,11 +59,11 @@ Definition sum_act_transfer (acts : list ActionBody) :=
                     | _ => 0
                     end) acts.
 
-Definition purchase_state_is (purchase_state' : EcommerceFixed.PurchaseState) (state : EcommerceFixed.State) : bool :=
+(*Definition purchase_state_is (purchase_state' : EcommerceFixed.PurchaseState) (state : EcommerceFixed.State) : bool :=
   match FMap.find purchaseId state.(purchases) with
   | Some purchase => purchase_state_eq purchase.(purchase_state) purchase_state'
   | _ => false
-  end.
+  end.*)
 
 Definition msg_is_request_purchase (state : EcommerceFixed.State) (msg : EcommerceFixed.Msg) :=
   match msg with
@@ -100,11 +89,25 @@ Definition msg_is_buyer_open_commitment (state : EcommerceFixed.State) (msg : Ec
   | _=> false
   end.
 
+Definition get_purchaseId_from_msg (msg : Msg) : option N := 
+  match msg with
+  | buyer_abort purchaseId
+  | buyer_confirm_delivery purchaseId
+  | buyer_call_timeout purchaseId
+  | buyer_open_commitment purchaseId _ _
+  | seller_call_timeout purchaseId
+  | seller_accept_contract purchaseId
+  | seller_item_was_delivered purchaseId
+  | seller_forfeit_dispute purchaseId
+  | seller_counter_dispute purchaseId _ => Some purchaseId
+  | _ => None
+  end.
+
 Definition amount_sent_is_item_value_of_purchase_times_X (X : Z)
   (chain : Chain) (cctx : ContractCallContext) (old_state : EcommerceFixed.State)
   (msg : Msg) (result_opt : option (EcommerceFixed.State * list ActionBody)) :=
-  match result_opt with
-  | Some (_, acts) =>
+  match get_purchaseId_from_msg msg, result_opt with
+  | Some purchaseId, Some (_, acts) =>
       match FMap.find purchaseId old_state.(purchases) with
       | Some purchase =>
           match FMap.find purchase.(itemId) old_state.(listings) with
@@ -114,7 +117,7 @@ Definition amount_sent_is_item_value_of_purchase_times_X (X : Z)
           end
       | _ => checker false
       end
-  | _ => checker false (* should never occur *)
+  | _, _ => checker false
   end.
 
 (* on [buyer_abort], amount transferred to buyer is equal to item_value in the purchase. *)
@@ -122,17 +125,17 @@ Definition amount_sent_is_item_value_of_purchase_times_X (X : Z)
   {{ fun state msg => msg_is_buyer_abort state msg }}
   contract_base_addr
   {{ amount_sent_is_item_value_of_purchase_times_X 1 }}
-).*)
+). *)
 (* +++ Passed 10000 tests (0 discards) *)
 
 (* on [buyer_open_commitment] the amount transferred to the seller should be twice the item value *)
-(*QuickChick(
+(* QuickChick(
   {{ fun state msg => msg_is_buyer_open_commitment state msg }}
   contract_base_addr
   {{ amount_sent_is_item_value_of_purchase_times_X 2 }}
-).*)
+). *)
 (* +++ Passed 10000 tests (0 discards) *)
-Definition is_purchase_state (purchase_state_goal : EcommerceFixed.PurchaseState) (chain_state : ChainState) :=
+(*Definition is_purchase_state (purchase_state_goal : EcommerceFixed.PurchaseState) (chain_state : ChainState) :=
   match get_contract_state EcommerceFixed.State chain_state ecommerce_contract_addr with
   | Some state =>
       match FMap.find purchaseId state.(purchases) with
@@ -140,24 +143,42 @@ Definition is_purchase_state (purchase_state_goal : EcommerceFixed.PurchaseState
           | _ => false
       end
   | None => false (* should never occur *)
+  end.*)
+  
+Fixpoint index { A } ( n : nat ) ( l : list A ) : option A :=
+  match l with
+  | nil => None
+  | a :: l' =>
+      if beq_nat n O then Some a else index ( pred n ) l'
   end.
-(* on purchase initialization (that is purchase with state [request_purchase])
-   all states are reachable for the purchase*)
-(*QuickChick (ecommerce_chainbuilder ~~> is_purchase_state EcommerceFixed.requested).
-QuickChick (ecommerce_chainbuilder ~~> is_purchase_state EcommerceFixed.accepted).
-QuickChick (ecommerce_chainbuilder ~~> is_purchase_state EcommerceFixed.rejected).
-QuickChick (ecommerce_chainbuilder ~~> is_purchase_state EcommerceFixed.delivered).
-QuickChick (ecommerce_chainbuilder ~~> is_purchase_state EcommerceFixed.completed).
-QuickChick (ecommerce_chainbuilder ~~> is_purchase_state EcommerceFixed.dispute).
-QuickChick (ecommerce_chainbuilder ~~> is_purchase_state EcommerceFixed.counter).
-QuickChick (ecommerce_chainbuilder ~~> is_purchase_state EcommerceFixed.failed).*)
+  
+
+Definition any {A : Type} (P : A -> bool) (l : list A):=
+  negb (forallb (fun a => negb (P a)) l).
+
+  
+Definition any_purchase_reaches_state (purchase_state_goal : EcommerceFixed.PurchaseState) (chain_state : ChainState) :=
+  match get_contract_state EcommerceFixed.State chain_state ecommerce_contract_addr with
+  | Some state => any (fun p => purchase_state_eq p.(purchase_state) purchase_state_goal) (FMap.values state.(purchases))
+  | None => false (* should never occur *)
+  end.
+(* A purchase should be able to reach any [purchase_state] *)
+
+(*QuickChick (ecommerce_chainbuilder ~~> any_purchase_reaches_state EcommerceFixed.requested).
+QuickChick (ecommerce_chainbuilder ~~> any_purchase_reaches_state EcommerceFixed.accepted).
+QuickChick (ecommerce_chainbuilder ~~> any_purchase_reaches_state EcommerceFixed.rejected).
+QuickChick (ecommerce_chainbuilder ~~> any_purchase_reaches_state EcommerceFixed.delivered).
+QuickChick (ecommerce_chainbuilder ~~> any_purchase_reaches_state EcommerceFixed.completed).
+QuickChick (ecommerce_chainbuilder ~~> any_purchase_reaches_state EcommerceFixed.dispute).
+QuickChick (ecommerce_chainbuilder ~~> any_purchase_reaches_state EcommerceFixed.counter).
+QuickChick (ecommerce_chainbuilder ~~> any_purchase_reaches_state EcommerceFixed.failed). *)
 (* Success - found witness satisfying the predicate! *)
 
 
 (* TODO? *)
 (* If all purchases are of state [failed] [completed] or [rejected] then the contract should
    contain no money. *)
-
+(* NOT TRUE ANY LONGER - We have have "discarded_money". *)
 Definition all_purchases_are_finished (cs : ChainState) : bool :=
   match cs.(env_contract_states) ecommerce_contract_addr with
   | Some serialized_state => 

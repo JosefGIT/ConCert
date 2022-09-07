@@ -64,6 +64,7 @@ Record Purchase :=
     purchase_state : PurchaseState;
     buyer : Address;
     pool : Amount;
+    discarded_money : Amount; (* For proof purposes only. *)
   }.
 
 MetaCoq Run (make_setters Purchase).
@@ -148,6 +149,7 @@ Definition buyer_request_purchase_action (chain : Chain) (ctx : ContractCallCont
       purchase_state := requested;
       buyer := _buyer;
       pool := ctx.(ctx_amount);
+      discarded_money := 0;
     |} in
   let updated_purchases := (FMap.add purchaseId purchase (purchases state) :  purchases_type) in
   Some (state<| purchases := updated_purchases |>, []).
@@ -179,13 +181,15 @@ Definition buyer_confirm_delivery_action ctx state purchaseId
 Definition buyer_dispute_delivery_action ctx state chain purchaseId commitment
           : option (State * list ActionBody) :=
   let current_purchases := state.(purchases) in
-  do required_amount_zero ctx;
   do purchase <- find_purchase purchaseId current_purchases;
+  do item <- find_item purchase.(itemId) state.(listings);
+  do required_true (ctx.(ctx_amount) =? item.(item_value));
   do required_true (purchase_state_eq purchase.(purchase_state) delivered);
   do required_true (ctx.(ctx_from) =? purchase.(buyer))%address;
   let updated_purchase := purchase <| purchase_state := dispute |>
                                    <| commit := commitment |>
-                                   <| last_block := current_slot chain |> in 
+                                   <| last_block := current_slot chain |>
+                                   <| pool := purchase.(pool) + item.(item_value) |> in 
   let updated_purchases := FMap.add purchaseId updated_purchase current_purchases in
   Some (state <| purchases := updated_purchases|>, []).
 
@@ -208,15 +212,16 @@ Definition buyer_open_commitment_action ctx state purchaseId buyer_bit nonce
   do required_amount_zero ctx;
   let current_purchases := state.(purchases) in
   do purchase <- find_purchase purchaseId current_purchases;
+  do item <- find_item purchase.(itemId) state.(listings);
   do required_true (ctx.(ctx_from) =? purchase.(buyer))%address;
   do required_true (purchase_state_eq purchase.(purchase_state) counter);
   do required_true ((hash_bid purchaseId buyer_bit nonce =? purchase.(commit))%N);
-  let purchase_pool := purchase.(pool) in
-  let updated_purchase := purchase <| purchase_state := failed |> <| pool := 0 |> in
+  let to_send := purchase.(pool) - item.(item_value) in
+  let updated_purchase := purchase <| purchase_state := failed |> <| pool := 0 |> <| discarded_money := item.(item_value) |>in
   let updated_purchases := FMap.add purchaseId updated_purchase current_purchases in
   let target_transaction := if (eqb purchase.(seller_bit) buyer_bit) then purchase.(buyer) else state.(seller) in
   Some (state <| purchases := updated_purchases |>,
-        [act_transfer target_transaction purchase_pool]).
+        [act_transfer target_transaction to_send]).
 
 Definition seller_call_timeout_action ctx state chain purchaseId
   : option (State * list ActionBody) :=
