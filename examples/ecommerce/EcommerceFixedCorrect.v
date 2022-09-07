@@ -1399,7 +1399,7 @@ Qed.
 
 
 Ltac no_self_calls_solve := now instantiate (CallFacts := fun _ ctx _ _ _ => ctx_from ctx <> ctx_contract_address ctx).
-Ltac destruct_apply_msg := destruct_message; apply_message_lemma receive_some; destruct_hyps; auto.
+Ltac destruct_apply_msg receive_some := destruct_message; apply_message_lemma receive_some; destruct_hyps; auto.
 Lemma purchase_discarded_zero_when_not_failed : forall chain_state contract_addr,
   reachable chain_state ->
   env_contracts chain_state contract_addr = Some (contract : WeakContract) ->
@@ -1410,7 +1410,9 @@ Lemma purchase_discarded_zero_when_not_failed : forall chain_state contract_addr
 Proof.
   contract_induction; intros; auto.
   - apply init_correct in init_some; auto; destruct_hyps. rewrite H4. now setoid_rewrite FMap.elements_empty.
-  -  
+  - destruct_apply_msg receive_some.
+    + assert (perm : Permutation (FMap.elements (FMap.add x x0 (purchases prev_state))) ((x, x0)::(FMap.elements prev_state.(purchases)))). { now apply FMap.elements_add.  }
+      rewrite perm.
 
 Lemma contract_balance_is_pool_and_discarded_sum : forall chain_state contract_addr,
   reachable chain_state ->
