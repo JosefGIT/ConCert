@@ -99,11 +99,6 @@ Proof.
   intros *. split; intros; destruct state1; destruct state2; try discriminate; reflexivity.
 Qed.
 
-(*Lemma address_eq_ne' `{ChainBase} x y :
-  address_eqb x y = false ->
-  x <> y.
-Proof. intros. destruct_address_eq; auto. Qed. destruct (address_eqb_spec x y) as [->|]; tauto. Qed.
-*)
 (**** Correctness for messages *****)
 Lemma buyer_request_purchase_correct : forall chain ctx prev_state new_state new_acts _itemId _notes,
   EcommerceFixed.receive chain ctx prev_state (Some (buyer_request_purchase _itemId _notes)) = Some (new_state, new_acts)
@@ -1482,6 +1477,71 @@ Proof.
     + unfold not_from_contract; cbn.
       eapply no_self_calls'; eauto. now constructor.
 Qed.
-(* If timeout has reached for an active [Purchase], it is possible for someone to end the contract. *)
-(* All item values are greater than 0. *)
+
+
+Definition purchase_is_finished purchase :=
+  match purchase.(purchase_state) with
+  | completed | failed | rejected => True
+  | _ => False
+  end.
+
+Definition purchase_is_timed_out chain state purchase :=
+  (purchase.(last_block) + state.(timeout) < chain.(current_slot))%nat.
+
+(* If a purchase has been requested it is possible to be completed. *)
+Lemma request_purchase_can_be_completed : forall chain_state caddr purchaseId purchase,
+  reachable chain_state ->
+  emptyable (chain_state_queue chain_state) ->
+  (exists (cstate : State),
+      env_contracts chain_state caddr = Some (contract : WeakContract)
+   /\ FMap.find purchaseId cstate.(purchases) = Some purchase
+   /\ purchase.(purchase_state) = requested
+  ) ->
+  (exists chain_state',
+     reachable_through chain_state chain_state'
+  /\ emptyable (chain_state_queue chain_state')
+  /\ (exists (cstate' : State),
+      FMap.find purchaseId cstate'.(purchases) = Some purchase
+      /\ purchase.(purchase_state) = completed
+     )
+  ).
+Proof.
+  intros * reachable_cs emptyable_cs H.
+  empty_queue H; destruct H as (cstate & contract_deployed & purchase_found & purchase_requested).
+  - eexists. rewrite_environment_equiv. cbn. repeat split.
+    + auto.
+    + apply purchase_found.
+    + auto.
+  - eexists. rewrite_environment_equiv. cbn. Admitted. (* TODO*)
+
+(* If timeout has reached for an active [Purchase], it is possible for someone to end the contract via a message. *)
+Lemma on_timeout_someone_can_always_end : forall chain purchaseId prev_state new_state new_acts,
+  (exists purchase,
+       FMap.find purchaseId prev_state.(purchases) = Some purchase
+    /\ ~ purchase_is_finished purchase
+    /\ purchase_is_timed_out chain prev_state purchase
+  ) ->
+  (exists msg,
+    (exists ctx, EcommerceFixed.receive chain ctx prev_state msg = Some (new_state, new_acts)) ->
+      exists updated_purchase,
+            FMap.find purchaseId new_state.(purchases) = Some updated_purchase
+        /\ purchase_is_finished updated_purchase
+      
+  ).
+Proof.
+  intros * (purchase & found & not_finished & timed_out).
+  unfold purchase_is_finished in *. 
+  destruct purchase.(purchase_state) eqn:prev_purchase_state;
+  try (now destruct not_finished);
+  only 1 : exists (Some (seller_reject_contract purchaseId));
+  only 2 : exists (Some (buyer_call_timeout purchaseId));
+  only 3 : exists (Some (seller_call_timeout purchaseId));
+  only 4 : exists (Some (buyer_call_timeout purchaseId));
+  only 5 : exists (Some (seller_call_timeout purchaseId));
+  intros (ctx & receive_some);
+  apply_message_lemma receive_some; destruct_hyps;
+  exists x0; now rewrite_param x0.(purchase_state).
+Qed.
+
+(* If purchase state is finished, the purchase will never change. ? *)
 End Theories.
