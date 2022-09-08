@@ -317,7 +317,7 @@ Definition no_active_purchase_for_itemId state _itemId :=
     end)
   key_purchases_for_itemId.
 
-(* Is it possible to iterate FMaps? *)
+
 Definition seller_update_listings_action ctx state itemId descr value
   : option (State * list ActionBody) :=
   do required_amount_zero ctx;
