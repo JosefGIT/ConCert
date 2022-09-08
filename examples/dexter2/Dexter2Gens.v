@@ -6,15 +6,18 @@ From ConCert.Examples.FA2 Require Import FA2Token.
 From ConCert.Examples.FA2 Require Import FA2LegacyInterface.
 From ConCert.Examples.Dexter2 Require Import Dexter2CPMM.
 From ConCert.Examples.Dexter2 Require Import Dexter2Printers.
+From ConCert.Execution Require Import ContractCommon.
 Import MonadNotation.
 From Coq Require Import List. Import ListNotations.
 From Coq Require Import ZArith.
+Require Import Extras.
 
 Module Type Dexter2Info.
   Parameter accounts : list Address.
   Parameter gAddr : Chain -> G Address.
   Parameter cpmm_contract_addr : Address.
   Parameter token_contract_addr : Address.
+  Parameter lqt_contract_addr : Address.
   Parameter token_id : N.
 End Dexter2Info.
 
@@ -24,12 +27,34 @@ Module Dexter2Gens (Info : Dexter2Info).
   Arguments deserialize : clear implicits.
   Arguments serialize : clear implicits.
 
+  Definition token_balance (addr : Address)
+                           (state : FA2Token.State) : N :=
+  match FMap.find token_id state.(assets) with
+  | Some ledger => with_default 0%N (FMap.find addr ledger.(balances))
+  | None => 0%N
+  end.
+
+  Definition liquidity_token_balance (addr : Address)
+                                     (state : Dexter2FA12.State) : N :=
+    with_default 0%N (AddressMap.find addr state.(Dexter2FA12.tokens)).
+
   (** * Dexter2 CPMM generators *)
 
   Definition gNonBrokeAddr (env : Environment) : G (option Address) :=
     let freq_accounts := map (fun addr => 
       (Z.to_nat ((env_account_balances env) addr), returnGenSome addr)) accounts in
     freq_ (returnGen None) freq_accounts.
+
+  Definition gAddrWithTokens (state : FA2Token.State) : G (option Address) :=
+    let freq_accounts := map (fun addr => 
+      (N.to_nat (token_balance addr state), returnGenSome addr)) accounts in
+    freq_ (returnGen None) freq_accounts.
+
+  Definition gAddrWithLiquidityTokens (state : Dexter2FA12.State) : G (option Address) :=
+    let freq_accounts := map (fun addr => 
+      (N.to_nat (liquidity_token_balance addr state), returnGenSome addr)) accounts in
+    freq_ (returnGen None) freq_accounts.
+
 
   Definition gUpdateTokenPool (env : Environment) : G (Address * Amount * Dexter2CPMM.Msg) :=
     from_addr <- gAddr env ;;
@@ -58,6 +83,41 @@ Module Dexter2Gens (Info : Dexter2Info).
     |} in
     returnGen (from_addr, 0%Z, FA2Token.other_msg (TokenToXtz param)).
 
+  Definition gAddLiquidity (env : Environment) : GOpt (Address * Amount * Dexter2CPMM.Msg) :=
+    (*state <- returnGen (get_contract_state Dexter2CPMM.State env cpmm_contract_addr);;
+    fa2_state <- returnGen (get_contract_state FA2Token.State env token_contract_addr);;
+    from_addr <- gAddrWithTokens fa2_state ;;
+    deadline <- bindGen (choose (env.(current_slot) + 1, env.(current_slot) + 10)) returnGenSome ;;
+    let from_token_balance := token_balance from_addr fa2_state in
+    (* Amount must "match" token balance of caller. *)
+    let max_amount := ((from_token_balance * state.(xtzPool)) / state.(tokenPool))%N in
+    amount <- bindGen (choose (1%Z, Z.of_N max_amount)) returnGenSome ;;*)
+    from_addr <- gAddr env;;
+    amount <- choose (1%Z, (env_account_balances env) from_addr) ;;
+    deadline <- bindGen (choose (env.(current_slot) + 1, env.(current_slot) + 10)) returnGenSome ;;
+    (* For these tests [owner] is the only relevant requirement in param.*)
+    let param := {|
+      owner := from_addr;
+      minLqtMinted := 1;
+      maxTokensDeposited := 1;
+      add_deadline := 1
+    |} in
+    returnGenSome (from_addr, amount, FA2Token.other_msg (AddLiquidity param)).
+  
+    Definition gRemoveLiquidity (env : Environment) : GOpt (Address * Amount * Dexter2CPMM.Msg) :=
+    liquidity_state <- returnGen (get_contract_state (Dexter2FA12.State) env lqt_contract_addr);;
+    from_addr <- gAddrWithLiquidityTokens liquidity_state;;
+    lqt_to_burn <- bindGen (choose (1%N, liquidity_token_balance from_addr liquidity_state)) returnGenSome;;
+    deadline <- bindGen (choose (env.(current_slot) + 1, env.(current_slot) + 10)) returnGenSome ;;
+    let param := {|
+      liquidity_to := lqt_contract_addr;
+      lqtBurned := lqt_to_burn;
+      minXtzWithdrawn := 1;
+      minTokensWithdrawn := 1;
+      remove_deadline := deadline;
+    |} in
+    returnGenSome (from_addr, 0%Z, FA2Token.other_msg (RemoveLiquidity param)).
+    
   (** * FA2 generators *)
   Definition gBalanceOf (env : Environment) : G (Address * Amount * FA2Token.Msg) :=
     from_addr <- gAddr env ;;
@@ -96,8 +156,19 @@ Module Dexter2Gens (Info : Dexter2Info).
       (1, '(caller, value, msg) <- gTokenToXtz env ;;
           call_cpmm caller value msg
       );
+      (* AddLiquidity *)
+      (1,
+        '(caller, value, msg) <- gAddLiquidity env;;
+        call_cpmm caller value msg
+      );
+      (*(* RemoveLiquidity *)
+      (1,
+        '(caller, value, msg) <- gRemoveLiquidity env;;
+        call_cpmm caller value msg
+      );*)
       (* BalanceOf *)
       (1, '(caller, value, msg) <- gBalanceOf env ;;
           call_token caller value msg
       )].
+
 End Dexter2Gens.

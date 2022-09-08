@@ -30,6 +30,7 @@ Module TestInfo <: Dexter2Info.
   Definition gAddr (c : Chain) := elems [person_1; person_2; person_3; person_4; person_5].
   Definition cpmm_contract_addr := cpmm_contract_base_addr.
   Definition token_contract_addr := token_contract_base_addr.
+  Definition lqt_contract_addr := lqt_contract_base_addr.
   Definition token_id := token_id_.
 End TestInfo.
 Module MG := Dexter2Gens TestInfo. Import MG.
@@ -130,6 +131,17 @@ Module NotationInfo <: TestNotationParameters.
 End NotationInfo.
 Module TN := TestNotations NotationInfo. Import TN.
 (* Sample (gChain). *)
+(*
+Definition test (env : Environment)
+                                 (cctx : ContractCallContext)
+                                 (old_state : Dexter2CPMM.State)
+                                 (msg : Dexter2CPMM.Msg)
+                                 (result_opt : option (Dexter2CPMM.State * list ActionBody)) :=
+  match msg with
+  | FA2Token.other_msg (TokenToXtz _) => checker false
+  | _ => checker true
+  end.
+QuickChick({{fun _ _ => true}} cpmm_contract_base_addr {{test}}).*)
 
 (** * Tests *)
 (** Dexter2 uses call to balance_of entrypoint on the token contract
