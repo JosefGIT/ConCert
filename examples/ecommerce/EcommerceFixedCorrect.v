@@ -1397,22 +1397,57 @@ Proof.
   * now rewrite address_eq_refl in hd.
 Qed.
 
-
+Definition not_from_contract ctx := ctx_from ctx <> ctx_contract_address ctx.
 Ltac no_self_calls_solve := now instantiate (CallFacts := fun _ ctx _ _ _ => ctx_from ctx <> ctx_contract_address ctx).
 Ltac destruct_apply_msg receive_some := destruct_message; apply_message_lemma receive_some; destruct_hyps; auto.
+
+Ltac request_purchase_permutation id purchase state :=
+  assert (req_perm : Permutation (FMap.elements (FMap.add id purchase state.(purchases))) ((id, purchase)::(FMap.elements state.(purchases)))); try now apply FMap.elements_add.
+
+Ltac rewrite_param to_rewrite :=
+  match goal with
+  | [H : to_rewrite = _ |- _] => rewrite H
+  | [H : _ = to_rewrite |- _] => rewrite <- H
+  end.
+
+
+Definition purchases_discarded_zero_not_failed cstate :=
+  Forall (fun '(_, purchase) => purchase.(purchase_state) <> failed -> purchase.(discarded_money) = 0) (FMap.elements cstate.(purchases)).
+
+(* If Purchase state is not [failed] then [discharge_money] = 0 *)
 Lemma purchase_discarded_zero_when_not_failed : forall chain_state contract_addr,
   reachable chain_state ->
   env_contracts chain_state contract_addr = Some (contract : WeakContract) ->
   exists cstate,
        contract_state chain_state contract_addr = Some cstate
-    /\ Forall (fun '(_, purchase) => purchase.(purchase_state) <> failed -> purchase.(discarded_money) = 0)
-       (FMap.elements cstate.(purchases)).
+    /\ purchases_discarded_zero_not_failed cstate.
 Proof.
-  contract_induction; intros; auto.
+  unfold purchases_discarded_zero_not_failed. contract_induction; intros; auto.
   - apply init_correct in init_some; auto; destruct_hyps. rewrite H4. now setoid_rewrite FMap.elements_empty.
-  - destruct_apply_msg receive_some.
-    + assert (perm : Permutation (FMap.elements (FMap.add x x0 (purchases prev_state))) ((x, x0)::(FMap.elements prev_state.(purchases)))). { now apply FMap.elements_add.  }
-      rewrite perm.
+  - destruct_apply_msg receive_some; 
+    tryif (rewrite_param new_state.(purchases);
+         specialize (Forall_elements_f _ _ id x H IH) as prev_disc_zero;
+         cbn in prev_disc_zero;
+         apply Forall_elements_add; auto;
+         intros
+    ) then (try (rewrite_param x0.(discarded_money); now apply prev_disc_zero)) else idtac.
+    + rewrite_param new_state.(purchases).
+      request_purchase_permutation x x0 prev_state.
+      now rewrite req_perm.
+    + now destruct H21.
+    + destruct H7; rewrite_param x0.(discarded_money); now apply prev_disc_zero.
+    + now rewrite H3.
+    - no_self_calls_solve.
+    - instantiate (DeployFacts := fun _ _ => True).
+      instantiate (AddBlockFacts := fun _ _ _ _ _ _ => True).
+      unset_all; subst.
+      destruct_chain_step; auto.
+      destruct_action_eval; auto.
+      intros * contr_deployed ?. cbn.
+      subst.
+      eapply no_self_calls'; eauto.
+      now constructor.
+Qed.
 
 Lemma contract_balance_is_pool_and_discarded_sum : forall chain_state contract_addr,
   reachable chain_state ->
@@ -1424,41 +1459,46 @@ Proof.
   contract_induction; intros; auto; only 1-4 : cbn in *.
   - apply init_correct in init_some; auto. destruct_hyps. now rewrite H4, H0.
   - rewrite IH. lia.
-  - destruct_message; apply_message_lemma receive_some; destruct_hyps; auto;
-    try(
-      match goal with
-      | [H : purchases new_state = FMap.add _ _ (purchases prev_state) |- _] => rewrite H
-      end
-    );
-    try(
-      match goal with
-      | [H : new_acts = [] |- _] => rewrite H
-      end
-    ); cbn;
+  - instantiate (CallFacts := fun _ ctx cstate _ _ => purchases_discarded_zero_not_failed cstate /\ not_from_contract ctx).
+    unfold CallFacts, purchases_discarded_zero_not_failed, not_from_contract in *.
+    destruct facts as [H_disc_money not_from_contract].
+    destruct_message; apply_message_lemma receive_some; destruct_hyps; auto;
+    try(rewrite_param new_state.(purchases)); 
+    try(rewrite_param new_acts); cbn;
     try (rewrite (sum_pool_discarded_add prev_state.(purchases) id x x0) by auto;
     subst; cbn; rewrite IH; lia).
-    + assert (perm : Permutation (FMap.elements (FMap.add x x0 (purchases prev_state))) ((x, x0)::(FMap.elements prev_state.(purchases)))). { now apply FMap.elements_add.  }
-      rewrite (sumZ_permutation perm); cbn.
-      rewrite H9, H16.
+    + request_purchase_permutation x x0 prev_state.
+      rewrite (sumZ_permutation req_perm); cbn.
+      rewrite_param x0.(pool); rewrite_param x0.(discarded_money).
       now setoid_rewrite IH.
-    + destruct (eqb (x.(seller_bit)) (buyer_bit)); rewrite (sum_pool_discarded_add prev_state.(purchases) id x x0) by auto.
-      * rewrite H19 by auto. rewrite IH. rewrite H0. cbn. rewrite <- H8, <- H9. cbn.
-      rewrite IH. rewrite H0. cbn. lia.
-        rewrite IH. rewrite H0. cbn. lia.
-        rewrite IH. cbn. lia. admit. (* lia.*)
-      * rewrite H20 by auto. cbn. lia.
-    + rewrite H3. subst. cbn. rewrite IH. lia.
-  - no_self_calls_solve.
+    + specialize (Forall_elements_f _ _ id x H H_disc_money) as prev_disc_zero; cbn in *.
+      destruct (eqb (x.(seller_bit)) (buyer_bit));
+      rewrite (sum_pool_discarded_add prev_state.(purchases) id x x0) by auto;
+      try(rewrite H19 by auto); try(rewrite H20 by auto).
+      * rewrite IH.
+        rewrite_param ctx.(ctx_amount).
+        rewrite_param x0.(pool).
+        rewrite_param x0.(discarded_money). cbn.
+        rewrite prev_disc_zero. lia. congruence.
+      * rewrite IH.
+        rewrite_param ctx.(ctx_amount).
+        rewrite_param x0.(pool).
+        rewrite_param x0.(discarded_money). cbn.
+        rewrite prev_disc_zero. lia. congruence.
+    + rewrite IH. now rewrite_param ctx.(ctx_amount).
+  - now unfold CallFacts in *.
   - now rewrite <- perm.
   - instantiate (DeployFacts := fun _ _ => True).
     instantiate (AddBlockFacts := fun _ _ _ _ _ _ => True).
     unset_all; subst.
     destruct_chain_step; auto.
     destruct_action_eval; auto.
-    intros * contr_deployed ?. cbn.
-    subst.
-    eapply no_self_calls'; eauto.
-    now constructor.
+    intros * contr_deployed ?. split; cbn; subst.
+    + apply purchase_discarded_zero_when_not_failed in contr_deployed.
+      * destruct_hyps. congruence.
+      * now constructor.
+    + unfold not_from_contract; cbn.
+      eapply no_self_calls'; eauto. now constructor.
 Qed.
 (* If timeout has reached for an active [Purchase], it is possible for someone to end the contract. *)
 (* All item values are greater than 0. *)
