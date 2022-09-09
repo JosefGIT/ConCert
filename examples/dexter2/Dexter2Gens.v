@@ -84,16 +84,14 @@ Module Dexter2Gens (Info : Dexter2Info).
     returnGen (from_addr, 0%Z, FA2Token.other_msg (TokenToXtz param)).
 
   Definition gAddLiquidity (env : Environment) : GOpt (Address * Amount * Dexter2CPMM.Msg) :=
-    (*state <- returnGen (get_contract_state Dexter2CPMM.State env cpmm_contract_addr);;
+    state <- returnGen (get_contract_state Dexter2CPMM.State env cpmm_contract_addr);;
     fa2_state <- returnGen (get_contract_state FA2Token.State env token_contract_addr);;
     from_addr <- gAddrWithTokens fa2_state ;;
     deadline <- bindGen (choose (env.(current_slot) + 1, env.(current_slot) + 10)) returnGenSome ;;
     let from_token_balance := token_balance from_addr fa2_state in
     (* Amount must "match" token balance of caller. *)
     let max_amount := ((from_token_balance * state.(xtzPool)) / state.(tokenPool))%N in
-    amount <- bindGen (choose (1%Z, Z.of_N max_amount)) returnGenSome ;;*)
-    from_addr <- gAddr env;;
-    amount <- choose (1%Z, (env_account_balances env) from_addr) ;;
+    amount <- bindGen (choose (1%Z, Z.of_N max_amount)) returnGenSome ;;
     deadline <- bindGen (choose (env.(current_slot) + 1, env.(current_slot) + 10)) returnGenSome ;;
     (* For these tests [owner] is the only relevant requirement in param.*)
     let param := {|
