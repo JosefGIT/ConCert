@@ -45,12 +45,12 @@ Module Dexter2Gens (Info : Dexter2Info).
       (Z.to_nat ((env_account_balances env) addr), returnGenSome addr)) accounts in
     freq_ (returnGen None) freq_accounts.
 
-  Definition gAddrWithTokens (state : FA2Token.State) : G (option Address) :=
+  Definition gOptAddrWithTokens (state : FA2Token.State) : GOpt Address :=
     let freq_accounts := map (fun addr => 
       (N.to_nat (token_balance addr state), returnGenSome addr)) accounts in
     freq_ (returnGen None) freq_accounts.
 
-  Definition gAddrWithLiquidityTokens (state : Dexter2FA12.State) : G (option Address) :=
+  Definition gOptAddrWithLiquidityTokens (state : Dexter2FA12.State) : GOpt Address :=
     let freq_accounts := map (fun addr => 
       (N.to_nat (liquidity_token_balance addr state), returnGenSome addr)) accounts in
     freq_ (returnGen None) freq_accounts.
@@ -82,33 +82,35 @@ Module Dexter2Gens (Info : Dexter2Info).
       ttx_deadline := deadline
     |} in
     returnGen (from_addr, 0%Z, FA2Token.other_msg (TokenToXtz param)).
-
-  Definition gAddLiquidity (env : Environment) : GOpt (Address * Amount * Dexter2CPMM.Msg) :=
+    
+  Definition gOptAddLiquidity (env : Environment) : GOpt (Address * Amount * Dexter2CPMM.Msg) :=
     state <- returnGen (get_contract_state Dexter2CPMM.State env cpmm_contract_addr);;
     fa2_state <- returnGen (get_contract_state FA2Token.State env token_contract_addr);;
-    from_addr <- gAddrWithTokens fa2_state ;;
-    deadline <- bindGen (choose (env.(current_slot) + 1, env.(current_slot) + 10)) returnGenSome ;;
+    from_addr <- gOptAddrWithTokens fa2_state ;;
+    to_addr <- bindGen (gAddr env) returnGenSome;;
     let from_token_balance := token_balance from_addr fa2_state in
     (* Amount must "match" token balance of caller. *)
-    let max_amount := ((from_token_balance * state.(xtzPool)) / state.(tokenPool))%N in
-    amount <- bindGen (choose (1%Z, Z.of_N max_amount)) returnGenSome ;;
+    let max_amount' := ((from_token_balance * state.(xtzPool)) / state.(tokenPool))%N in
+    (* If max_amount is 0 then fail *)
+    max_amount <- returnGen (if (0 <? max_amount')%N then Some max_amount' else None);;
     deadline <- bindGen (choose (env.(current_slot) + 1, env.(current_slot) + 10)) returnGenSome ;;
+    amount <- bindGen (choose (1%Z, Z.of_N max_amount)) returnGenSome ;;
     (* For these tests [owner] is the only relevant requirement in param.*)
     let param := {|
-      owner := from_addr;
+      owner := to_addr;
       minLqtMinted := 1;
-      maxTokensDeposited := 1;
-      add_deadline := 1
+      maxTokensDeposited := from_token_balance;
+      add_deadline := deadline
     |} in
     returnGenSome (from_addr, amount, FA2Token.other_msg (AddLiquidity param)).
   
-    Definition gRemoveLiquidity (env : Environment) : GOpt (Address * Amount * Dexter2CPMM.Msg) :=
+  Definition gOptRemoveLiquidity (env : Environment) : GOpt (Address * Amount * Dexter2CPMM.Msg) :=
     liquidity_state <- returnGen (get_contract_state (Dexter2FA12.State) env lqt_contract_addr);;
-    from_addr <- gAddrWithLiquidityTokens liquidity_state;;
+    from_addr <- gOptAddrWithLiquidityTokens liquidity_state;;
     lqt_to_burn <- bindGen (choose (1%N, liquidity_token_balance from_addr liquidity_state)) returnGenSome;;
     deadline <- bindGen (choose (env.(current_slot) + 1, env.(current_slot) + 10)) returnGenSome ;;
     let param := {|
-      liquidity_to := lqt_contract_addr;
+      liquidity_to := from_addr;
       lqtBurned := lqt_to_burn;
       minXtzWithdrawn := 1;
       minTokensWithdrawn := 1;
@@ -145,27 +147,27 @@ Module Dexter2Gens (Info : Dexter2Info).
           call_cpmm caller value msg
       );
       (* XtzToToken *)
-      (1, bindGenOpt (gXtzToToken env)
+      (4, bindGenOpt (gXtzToToken env)
           (fun '(caller, value, msg) =>
             call_cpmm caller value msg
           )
       );
       (* TokenToXtz *)
-      (1, '(caller, value, msg) <- gTokenToXtz env ;;
+      (4, '(caller, value, msg) <- gTokenToXtz env ;;
           call_cpmm caller value msg
       );
       (* AddLiquidity *)
-      (1,
-        '(caller, value, msg) <- gAddLiquidity env;;
+      (4,
+        '(caller, value, msg) <- gOptAddLiquidity env;;
         call_cpmm caller value msg
       );
-      (*(* RemoveLiquidity *)
-      (1,
-        '(caller, value, msg) <- gRemoveLiquidity env;;
+      (* RemoveLiquidity *)
+      (4,
+        '(caller, value, msg) <- gOptRemoveLiquidity env;;
         call_cpmm caller value msg
-      );*)
+      );
       (* BalanceOf *)
-      (1, '(caller, value, msg) <- gBalanceOf env ;;
+      (4, '(caller, value, msg) <- gBalanceOf env ;;
           call_token caller value msg
       )].
 

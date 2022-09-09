@@ -131,17 +131,6 @@ Module NotationInfo <: TestNotationParameters.
 End NotationInfo.
 Module TN := TestNotations NotationInfo. Import TN.
 (* Sample (gChain). *)
-(*
-Definition test (env : Environment)
-                                 (cctx : ContractCallContext)
-                                 (old_state : Dexter2CPMM.State)
-                                 (msg : Dexter2CPMM.Msg)
-                                 (result_opt : option (Dexter2CPMM.State * list ActionBody)) :=
-  match msg with
-  | FA2Token.other_msg (TokenToXtz _) => checker false
-  | _ => checker true
-  end.
-QuickChick({{fun _ _ => true}} cpmm_contract_base_addr {{test}}).*)
 
 (** * Tests *)
 (** Dexter2 uses call to balance_of entrypoint on the token contract
