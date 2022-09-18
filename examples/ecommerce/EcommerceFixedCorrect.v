@@ -1391,7 +1391,7 @@ Ltac rewrite_param to_rewrite :=
 Definition purchases_discarded_zero_not_failed cstate :=
   Forall (fun '(_, purchase) => purchase.(purchase_state) <> failed -> purchase.(discarded_money) = 0) (FMap.elements cstate.(purchases)).
 
-(* If Purchase state is not [failed] then [discharge_money] = 0 *)
+(* If Purchase state is not [failed] then [discarded_money] = 0 *)
 Lemma purchase_discarded_zero_when_not_failed : forall chain_state contract_addr,
   reachable chain_state ->
   env_contracts chain_state contract_addr = Some (contract : WeakContract) ->
@@ -1487,13 +1487,45 @@ Definition purchase_is_finished purchase :=
 
 Definition purchase_is_timed_out chain state purchase :=
   (purchase.(last_block) + state.(timeout) < chain.(current_slot))%nat.
+(*
+  Ltac empty_queue H :=
+    let new_bstate := fresh "bstate" in
+    let new_reach := fresh "reach" in
+    let new_queue := fresh "queue" in
+    let temp_H := fresh "H" in
+    let temp_eval := fresh "eval" in
+     match goal with
+    | Hempty : emptyable (chain_state_queue ?bstate),
+      Hreach : reachable ?bstate |-
+      exists bstate', reachable_through ?bstate bstate' /\ _ =>
+        pattern (bstate) in H;
+        match type of H with
+        | ?f bstate =>
+          specialize (empty_queue bstate f) as
+            [new_bstate [new_reach [temp_H new_queue]]];
+          [apply Hreach | apply Hempty | apply H |
+          clear H;
+          intros ?bstate_from ?bstate_to ?act ?acts ?reach_from ?reach_to
+            H ?queue_from ?queue_to [[temp_eval] | ?env_eq];
+            only 1: destruct_action_eval |
+          clear H; rename temp_H into H]
+        end
+    end.
 
+Definition serializeMsg msg := (@serialize Msg _) msg.
+Definition serializeState state := (@serialize State _) state.
+Global Coercion serializeMsg : Msg >-> SerializedValue.
 (* If a purchase has been requested it is possible to be completed. *)
-Lemma request_purchase_can_be_completed : forall chain_state caddr purchaseId purchase,
+Lemma request_purchase_can_be_completed : forall chain_state creator caddr purchaseId purchase reward,
+  address_is_contract creator = false ->
+  (reward >= 0)%Z ->  
   reachable chain_state ->
   emptyable (chain_state_queue chain_state) ->
   (exists (cstate : State),
       env_contracts chain_state caddr = Some (contract : WeakContract)
+    /\ env_contract_states chain_state caddr = Some (serializeState cstate)
+   /\ address_is_contract cstate.(seller) = false
+   /\ address_is_contract purchase.(buyer) = false
    /\ FMap.find purchaseId cstate.(purchases) = Some purchase
    /\ purchase.(purchase_state) = requested
   ) ->
@@ -1506,13 +1538,64 @@ Lemma request_purchase_can_be_completed : forall chain_state caddr purchaseId pu
      )
   ).
 Proof.
-  intros * reachable_cs emptyable_cs H.
-  empty_queue H; destruct H as (cstate & contract_deployed & purchase_found & purchase_requested).
-  - eexists. rewrite_environment_equiv. cbn. repeat split.
-    + auto.
-    + apply purchase_found.
-    + auto.
-  - eexists. rewrite_environment_equiv. cbn. Admitted. (* TODO*)
+  intros * not_creator reward_zero reachable_cs emptyable_cs H.
+  empty_queue H; destruct H as (cstate & contract_deployed & contract_state & seller_not_contract & buyer_not_contract & purchase_found & purchase_requested);
+  (* H is preserved after transfers, discarding invalid actions, calling other contracts, deploying contract, after calls to the contract. *)
+  try (now eexists; rewrite_environment_equiv; repeat split;
+        cbn; destruct_address_eq; try congruence).
+  - (*subst.
+    rewrite contract_deployed in deployed.
+    inversion deployed. subst.
+    rewrite contract_state in deployed_state.
+    inversion deployed_state. subst.
+    clear deployed_state deployed.*)
+    admit.
+    (* 
+Lemma seller_accept_contract_correct : forall chain ctx prev_state new_state new_acts id, *)
+  - update_all.
+    add_block [
+      build_act (cstate.(seller)) (cstate.(seller)) (act_call caddr 0 (seller_accept_contract purchaseId));
+      build_act (cstate.(seller)) (cstate.(seller)) (act_call caddr 0 (seller_item_was_delivered purchaseId));
+      build_act purchase.(buyer) purchase.(buyer) (act_call caddr 0 (buyer_confirm_delivery purchaseId))
+    ] 1%nat; eauto.
+    repeat apply Forall_cons; try apply address_eq_refl; auto.
+    update_all.
+    evaluate_action contract; try easy.
+    + now apply account_balance_nonnegative. 
+    + specialize (seller_accept_contract_correct) as ([H1 H2] & _).
+      * cbn. admit.
+      * admit.
+      * destruct_hyps.  intros. split.
+      exists cstate
+    
+      specialize seller_accept_contract_correct.
+     specialize (seller_accept_contract_correct bstate0 ctx cstate _ _ purchaseId). as ((new_cstate & new_act & receive_some) & _); cycle 1.
+    + cbn in *. update_all. evaluate_transfer; try easy.
+      * (* Prove that the transfer is nonnegative *)
+        cbn. unfold build_act.
+        destruct_address_eq.
+        try rewrite Z.add_0_r.
+        now apply account_balance_nonnegative.
+      * (* Prove that there is enough balance to evaluate the transfer *)
+        destruct_address_eq;
+        try rewrite Z.add_0_r;
+        apply Z.le_ge, Z.le_refl. cbn in *.
+
+    cbn. auto.   unfold act_origin_is_eq_from. apply All_Forall.In_Forall. apply list.Forall_cons.
+    rewrite <- list.Forall_singleton.
+    do 3 apply list.Forall_singleton. address_eq_refl.
+    update_all.
+    add_block [build_act (cstate.(seller)) (cstate.(seller)) (act_call caddr 0 (seller_item_was_delivered purchaseId))] 1%nat; eauto.
+    apply list.Forall_singleton, address_eq_refl.
+    add_block [build_act purchase.(buyer) purchase.(buyer) (act_call caddr 0 (buyer_confirm_delivery purchaseId))] 1%nat; eauto.
+    apply list.Forall_singleton, address_eq_refl.
+    update_all.
+    + rewrite_environment_equiv. cbn in *.
+      unfold reachable_through. split; auto. easy. 
+
+    
+     unfold act_is_from_account. unfold act_from.  auto. address_eq_refl.
+*)
 
 (* If timeout has reached for an active [Purchase], it is possible for someone to end the contract via a message. *)
 Lemma on_timeout_someone_can_always_end : forall chain purchaseId prev_state new_state new_acts,

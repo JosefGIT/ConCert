@@ -17,7 +17,6 @@ Section EcommerceFixedTestSetup.
   Definition ecommerce_contract_addr := contract_base_addr.
   Definition seller := creator.
   
-  Definition item1_Id := 42%nat.
   Definition setup :=
       {|
         setup_listings := FMap.empty;
@@ -30,6 +29,7 @@ Section EcommerceFixedTestSetup.
     unpack_result (TraceGens.add_block empty_chain
     [
       build_act creator creator (Blockchain.act_transfer person_1 30);
+      build_act creator creator (Blockchain.act_transfer person_2 15);
       build_act creator creator (deploy_ecommerce)
     ]).
 

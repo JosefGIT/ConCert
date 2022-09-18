@@ -16,16 +16,9 @@ Section EcommerceTestSetup.
   Definition ecommerce_contract_addr := contract_base_addr.
   Definition seller := creator.
   
-  (* In these tests we only consider a contract instance with one item and one purchase. *)
-  Definition item_1 := {|
-    item_value := 1;
-    item_description := "Item1"
-  |}.
-  
-  Definition item1_Id := 42%nat.
   Definition setup :=
       {|
-        setup_listings := FMap.add item1_Id item_1 FMap.empty;(* FMap.add 2 item_2 (FMap.add 1 item_1 FMap.empty); *)
+        setup_listings := FMap.empty;
         setup_timeout := 3
       |}.
 
@@ -35,20 +28,16 @@ Section EcommerceTestSetup.
     unpack_result (TraceGens.add_block empty_chain
     [
       build_act creator creator (Blockchain.act_transfer person_1 30);
+      build_act creator creator (Blockchain.act_transfer person_2 15);
       build_act creator creator (deploy_ecommerce)
     ]).
 
-  (* In EcommerceGens the request_purchase is set to be called happen in the second block, hence "2".
-     This purchaseId is used throughout these tests.
-  *)
-  Definition purchaseId := hash_bid2 2%nat person_1.
 End EcommerceTestSetup.
 
 Module TestInfo <: EcommerceGensInfo.
   Definition contract_addr := ecommerce_contract_addr.
-  Definition purchase_buyer := person_1.
-  Definition item1_Id := item1_Id.
-  Definition purchaseId := purchaseId.
+  Definition buyers := [person_1; person_2].
+  Definition item_ids := [1%nat; 2%nat].
 End TestInfo.
 Module MG := EcommerceGens.EcommerceGens TestInfo.
 Import MG.
@@ -68,7 +57,7 @@ Definition sum_act_transfer (acts : list ActionBody) :=
                     | act_transfer _ amount => amount
                     | _ => 0
                     end) acts.
-
+(*
 Definition purchase_exists (state : Ecommerce.State) (msg : Ecommerce.Msg) : bool :=
   match FMap.find purchaseId state.(purchases) with
   | Some _ => true
@@ -114,3 +103,31 @@ QuickChick(
   {{ amount_sent_is_item_value_of_purchase }}
 ).
 *)
+*)
+Definition no_precondition (state : Ecommerce.State) (msg : Ecommerce.Msg) := true.
+
+Definition purchase_is_finished purchase :=
+  match purchase.(purchase_state) with
+  | Ecommerce.completed | Ecommerce.rejected | Ecommerce.failed => true
+  | _ => false
+  end.
+
+  
+
+
+
+Definition listings_cannot_be_changed_while_active_purchase
+  (chain : Chain) (cctx : ContractCallContext) (old_state : Ecommerce.State)
+  (msg : Msg) (result_opt : option (Ecommerce.State * list ActionBody)) :=
+  match result_opt with
+  | Some (_,_) =>
+    match msg with
+    |  seller_update_listings itemId _ _ =>
+      let purchases_with_itemId := filter (fun purchase => (purchase.(item) =? itemId)%nat) (FMap.values old_state.(purchases)) in
+      checker (forallb (fun purchase => purchase_is_finished purchase) purchases_with_itemId)
+    | _ => checker true
+    end
+  | None => checker true
+  end.
+(* Listing cannot be changed while being purchased. *)
+QuickChick({{ no_precondition }} contract_base_addr {{ listings_cannot_be_changed_while_active_purchase }}).
