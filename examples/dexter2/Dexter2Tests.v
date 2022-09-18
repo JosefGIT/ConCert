@@ -243,11 +243,11 @@ Open Scope N.
    https://research-development.nomadic-labs.com/progress-report-on-the-verification-of-liquidity-baking-smart-contracts.html#evolution-of-the-product-of-supplies.
    Modified slightly to support [X, T, L = 0] on initiation. *)
 Definition liquidity_share_price_does_not_decrease old_state new_state :=
-  let X := old_state.(tokenPool) in
-  let T := old_state.(xtzPool) in
+  let T := old_state.(tokenPool) in
+  let X := old_state.(xtzPool) in
   let L := old_state.(lqtTotal) in
-  let X' := new_state.(tokenPool) in
-  let T' := new_state.(xtzPool) in
+  let T' := new_state.(tokenPool) in
+  let X' := new_state.(xtzPool) in
   let L' := new_state.(lqtTotal) in
   (L =? 0) ||((0 <? L') &&  ((X * T) / (L * L) <=? (X' * T') / (L' * L'))).
 
