@@ -239,8 +239,18 @@ QuickChick (forAllBlocks token_reserve_safe). *)
 
 Open Scope N.
 
-(* Liquidity share price never decreases as shown in:
-   https://research-development.nomadic-labs.com/progress-report-on-the-verification-of-liquidity-baking-smart-contracts.html#evolution-of-the-product-of-supplies *)
+(* RPSLI. Liquidity share price does not decrease as shown in:
+   https://research-development.nomadic-labs.com/progress-report-on-the-verification-of-liquidity-baking-smart-contracts.html#evolution-of-the-product-of-supplies.
+   Modified slightly to support [X, T, L = 0] on initiation. *)
+Definition liquidity_share_price_does_not_decrease old_state new_state :=
+  let X := old_state.(tokenPool) in
+  let T := old_state.(xtzPool) in
+  let L := old_state.(lqtTotal) in
+  let X' := new_state.(tokenPool) in
+  let T' := new_state.(xtzPool) in
+  let L' := new_state.(lqtTotal) in
+  (L =? 0) ||((0 <? L') &&  ((X * T) / (L * L) <=? (X' * T') / (L' * L'))).
+
 Definition liquidity_share_price_never_decreases
     (env : Environment)
     (cctx : ContractCallContext)
@@ -249,27 +259,27 @@ Definition liquidity_share_price_never_decreases
     (result_opt : option (Dexter2CPMM.State * list ActionBody)) :=
   match result_opt with
   | Some (new_state, _) =>
-     checker
-     ((old_state.(tokenPool) * old_state.(xtzPool)) / (old_state.(lqtTotal) * old_state.(lqtTotal)) <=?
-     (new_state.(tokenPool) * new_state.(xtzPool)) / (new_state.(lqtTotal) * new_state.(lqtTotal)))
+     checker (liquidity_share_price_does_not_decrease old_state new_state)
   | _  => checker true
   end.
   
 (* Extract Constant DepthFirst => "false".
-QuickChick ({{no_precondition}} cpmm_contract_base_addr {{liquidity_share_price_never_decreases}}). *)
+QuickChick ({{no_precondition}} cpmm_contract_base_addr {{liquidity_share_price_never_decreases}}). *) 
 (* +++ Passed 10000 tests (0 discards) *)
 
 (* Extract Constant DepthFirst => "true".
 QuickChick ({{no_precondition}} cpmm_contract_base_addr {{liquidity_share_price_never_decreases}}). *)
 (* +++ Passed 10000 tests (0 discards) *)
 
-(* These properties do not hold initially, but after holding once in the contract it should hold forever *)
+
+(* Invariant as shown in:
+   https://research-development.nomadic-labs.com/progress-report-on-the-verification-of-liquidity-baking-smart-contracts.html#safety-of-execution
+   These properties do not hold initially in the ConCert implementation, but after holding once in the contract it should hold forever *)
 Definition tokens_invariants (state : Dexter2CPMM.State) : bool :=
-    let all_tokens_gt_zero := (0 <? state.(tokenPool)) && (0 <? state.(xtzPool)) && (0 <? state.(lqtTotal)) in
     let product_reserves_gt_lqtTotalsq := state.(lqtTotal)*state.(lqtTotal) <=? state.(tokenPool) * state.(xtzPool) in
     let lqtTotalsq_gt_zero := 0 <? state.(lqtTotal)*state.(lqtTotal) in
-    all_tokens_gt_zero || (lqtTotalsq_gt_zero && product_reserves_gt_lqtTotalsq).
-
+    (lqtTotalsq_gt_zero && product_reserves_gt_lqtTotalsq).
+  
 Definition P_token_invariants (state : Dexter2CPMM.State) (msg : Dexter2CPMM.Msg) : bool :=
   tokens_invariants state.
 
