@@ -55,6 +55,11 @@ Module Dexter2Gens (Info : Dexter2Info).
       (N.to_nat (liquidity_token_balance addr state), returnGenSome addr)) accounts in
     freq_ (returnGen None) freq_accounts.
 
+  (* Might use this later *)
+  Definition gOptDefault (env : Environment) : GOpt (Address * Amount) :=
+    from_addr <- gNonBrokeAddr env;;
+    amount <- bindGen (choose (1%Z, (env_account_balances env) from_addr)) returnGenSome ;;
+    returnGenSome (from_addr, 0%Z).
 
   Definition gUpdateTokenPool (env : Environment) : G (Address * Amount * Dexter2CPMM.Msg) :=
     from_addr <- gAddr env ;;

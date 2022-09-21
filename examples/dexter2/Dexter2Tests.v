@@ -275,13 +275,16 @@ QuickChick ({{no_precondition}} cpmm_contract_base_addr {{liquidity_share_price_
 (* Invariant as shown in:
    https://research-development.nomadic-labs.com/progress-report-on-the-verification-of-liquidity-baking-smart-contracts.html#safety-of-execution
    These properties do not hold initially in the ConCert implementation, but after holding once in the contract it should hold forever *)
-Definition tokens_invariants (state : Dexter2CPMM.State) : bool :=
-    let product_reserves_gt_lqtTotalsq := state.(lqtTotal)*state.(lqtTotal) <=? state.(tokenPool) * state.(xtzPool) in
-    let lqtTotalsq_gt_zero := 0 <? state.(lqtTotal)*state.(lqtTotal) in
-    (lqtTotalsq_gt_zero && product_reserves_gt_lqtTotalsq).
+Definition tokens_strictly_positive_and_squared_liq (state : Dexter2CPMM.State) : bool :=
+  let X := state.(xtzPool) in
+  let T := state.(tokenPool) in
+  let L := state.(lqtTotal) in
+  let product_reserves_gt_lqtTotalsq := L*L <=? X * T in
+  let lqtTotalsq_gt_zero := 0 <? L*L in
+  (lqtTotalsq_gt_zero && product_reserves_gt_lqtTotalsq).
   
 Definition P_token_invariants (state : Dexter2CPMM.State) (msg : Dexter2CPMM.Msg) : bool :=
-  tokens_invariants state.
+  tokens_strictly_positive_and_squared_liq state.
 
 Definition Q_token_invariants
   (env : Environment)
@@ -290,7 +293,7 @@ Definition Q_token_invariants
   (msg : Dexter2CPMM.Msg)
   (result_opt : option (Dexter2CPMM.State * list ActionBody)) :=
     match result_opt with
-    | Some (new_state, _) => tokens_invariants new_state
+    | Some (new_state, _) => tokens_strictly_positive_and_squared_liq new_state
     | _ => true
     end.
 
