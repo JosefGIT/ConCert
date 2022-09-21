@@ -1085,88 +1085,6 @@ Proof.
   destruct_message; now apply_message_lemma receive_some.
 Qed.
 
-(**** START  --  FINITE MAP LEMMAS ****)
-From stdpp Require gmap.
-Lemma map_Forall_to_list_2 : forall {K V : Type} `{countable.Countable K} (m : FMap K V) (P : (K * V) -> Prop),
-  fin_maps.map_Forall (prod_uncurry P) m <-> Forall P (FMap.elements m).
-Proof.
-  intros *. split; intros HForall.
-  - apply Forall_forall. intros [i x] ix_in_m.
-    apply base.elem_of_list_In in ix_in_m. rewrite fin_maps.elem_of_map_to_list in ix_in_m. now apply (HForall i x).
-  - intros i x find_some. rewrite Forall_forall in HForall. rewrite <- fin_maps.elem_of_map_to_list in find_some. apply HForall. now rewrite <- base.elem_of_list_In.
-Qed.
-
-Lemma Forall_elements_add : forall {K V : Type} `{countable.Countable K} (m : FMap K V) (f : (K*V) -> Prop) (new_key : K) (new_value : V),
-  f (new_key, new_value) ->
-  Forall f (FMap.elements m) ->
-  Forall f (FMap.elements (FMap.add new_key new_value m)).
-Proof.
-  intros * new_satisfied m_satisfied.
-  apply map_Forall_to_list_2; auto.
-  apply map_Forall_to_list_2 in m_satisfied.
-  apply fin_maps.map_Forall_insert_2; auto.
-Qed.
-
-
-Lemma val_in_map_In_key_val : forall {K V : Type} `{countable.Countable K} (m : FMap K V) (v : V),
-  In v (FMap.values m) -> exists (k : K), In (k, v) (FMap.elements m).
-Proof.
-  intros *.
-  unfold FMap.values. induction (FMap.elements m) as [| [k' v'] vals' IH]; intros v_in_m.
-  - easy.
-  - cbn in *. destruct v_in_m.
-    + subst. now exists k'.
-    + destruct IH; auto. now exists x.
-Qed. 
-
-Lemma key_val_in_map_In_val : forall {K V : Type} `{countable.Countable K} (m : FMap K V) (k : K) (v : V),
-  In (k, v) (FMap.elements m) -> In v (FMap.values m).
-Proof.
-  intros *.
-  unfold FMap.values. induction (FMap.elements m) as [| [k' v'] vals' IH]; intros kv_in_m; cbn in *.
-  - easy.
-  - destruct kv_in_m as [kv_eq | kv_in_vals'].
-    + now inversion kv_eq.
-    + right. now apply IH.
-Qed. 
-
-Lemma Forall_elements_values : forall {K V : Type} `{countable.Countable K} (m : FMap K V) (f : V -> Prop),
-  Forall (fun '(_, v) => f v) (FMap.elements m) <-> Forall f (FMap.values m).
-Proof.
-  intros *. split; intros forall_m.
-  - rewrite Forall_forall in *. intros v v_in_m.
-    apply val_in_map_In_key_val in v_in_m.
-    destruct v_in_m as [k' in_m]. now apply (forall_m (k', v)).
-  - rewrite Forall_forall in *. intros [k' v'] k'v'_in_m.
-    apply forall_m. now apply key_val_in_map_In_val in k'v'_in_m.
-Qed.
-
-Lemma Forall_values_add : forall {K V : Type} `{countable.Countable K} (m : FMap K V) (f : V -> Prop) (new_key : K) (new_value : V),
-  f new_value ->
-  Forall f (FMap.values m) ->
-  Forall f (FMap.values (FMap.add new_key new_value m)).
-Proof.
-  intros * new_satisfied m_satisfied.
-  rewrite <- Forall_elements_values in *.
-  now apply Forall_elements_add.
-Qed.
-
-Lemma In_values_find_some : forall {K V : Type} `{countable.Countable K} (m : FMap K V) (v : V),
-  In v (FMap.values m) -> exists k, FMap.find k m = Some v.
-Proof.
-  intros * kv_in_m. apply val_in_map_In_key_val in kv_in_m.
-  destruct kv_in_m as [k' kv_in_m].
-  exists k'. now apply FMap.In_elements.
-Qed.
-
-Lemma find_some_In_values : forall {K V : Type} `{countable.Countable K} (m : FMap K V) (k : K) (v : V),
-  FMap.find k m = Some v -> In v (FMap.values m).
-Proof.
-  intros * find_some.
-  apply FMap.In_elements in find_some.
-  now apply key_val_in_map_In_val in find_some.
-Qed.
-(**** END  --  FINITE MAP LEMMAS ****)
 
 Ltac no_facts_added :=
   instantiate (AddBlockFacts := fun _ _ _ _ _ _ => True);
@@ -1228,22 +1146,6 @@ Proof.
   - no_facts_added.
 Qed. 
 
-Lemma Forall_elements_f : forall {K V : Type} `{countable.Countable K} (m : FMap K V) (f : (K*V) -> Prop) (k : K) (v : V),
-  FMap.find k m = Some v ->
-  Forall f (FMap.elements m) ->
-  f (k, v).
-Proof.
-  intros * found_some forall_elements.
-  apply map_Forall_to_list_2 in forall_elements.
-  apply (fin_maps.map_Forall_lookup_1 (prod_uncurry f) m k v); auto.
-Qed.
-
-Lemma Forall_elements_f_remove : forall {K V : Type} `{countable.Countable K} (m : FMap K V) (f : (K*V) -> Prop) (k : K),
-  Forall f (FMap.elements m) ->
-  Forall f (FMap.elements (FMap.remove k m)).
-Proof.
-Admitted.
-
 Lemma buyer_not_caddr_update : forall ctx id purchase1 purchase2 (purchases : purchases_type),
   purchase1.(buyer) <> ctx.(ctx_contract_address) ->
   purchase1.(buyer) = purchase2.(buyer) ->
@@ -1256,7 +1158,7 @@ Proof.
   { now eapply FMap.elements_add_existing. }
   rewrite perm1. apply Forall_cons; auto.
   - now rewrite <- buyer_eq. 
-  - now apply Forall_elements_f_remove.
+  - now apply FMap.Forall_elements_f_remove.
 Qed.
 
 Lemma buyers_not_contract_addr chain_state caddr:
@@ -1275,7 +1177,7 @@ Proof.
         | [H : new_state.(purchases) = _ |- _] => rewrite H
         end
     ); cbn;
-    try (eapply (buyer_not_caddr_update _ _ x x0); auto; now apply (Forall_elements_f _ _ id x) in IH); auto.
+    try (eapply (buyer_not_caddr_update _ _ x x0); auto; now apply (FMap.Forall_elements_f _ _ id x) in IH); auto.
     (* request_purchase *)
     assert (perm : Permutation (FMap.elements (FMap.add x x0 (purchases prev_state))) ((x, x0)::(FMap.elements prev_state.(purchases)))). { now apply FMap.elements_add. }
     setoid_rewrite perm. apply Forall_cons; auto.
@@ -1287,7 +1189,7 @@ Proof.
         | [H : new_state.(purchases) = _ |- _] => rewrite H
         end
     ); cbn;
-    try (eapply (buyer_not_caddr_update _ _ x x0); auto; now apply (Forall_elements_f _ _ id x) in IH); auto.
+    try (eapply (buyer_not_caddr_update _ _ x x0); auto; now apply (FMap.Forall_elements_f _ _ id x) in IH); auto.
     (* request_purchase *)
     assert (perm : Permutation (FMap.elements (FMap.add x x0 (purchases prev_state))) ((x, x0)::(FMap.elements prev_state.(purchases)))). { now apply FMap.elements_add. }
     setoid_rewrite perm. apply Forall_cons; auto.
@@ -1324,9 +1226,9 @@ Proof.
     + destruct (eqb (x.(seller_bit)) buyer_bit).
       * rewrite H19; auto. constructor; auto. now rewrite <- H18.
       * rewrite H20; auto.
-    + constructor; auto. apply (Forall_elements_f _ _ id x) in f2; auto; cbn in *.
+    + constructor; auto. apply (FMap.Forall_elements_f _ _ id x) in f2; auto; cbn in *.
       now apply address_eq_ne in f2.
-    + constructor; auto. apply (Forall_elements_f _ _ id x) in f2; auto; cbn in *.
+    + constructor; auto. apply (FMap.Forall_elements_f _ _ id x) in f2; auto; cbn in *.
       now apply address_eq_ne in f2.
   - inversion_clear IH as [|? ? head_not_me tail_not_me].
     apply Forall_app. split; auto.
@@ -1403,9 +1305,9 @@ Proof.
   - apply init_correct in init_some; auto; destruct_hyps. rewrite H4. now setoid_rewrite FMap.elements_empty.
   - destruct_apply_msg receive_some; 
     tryif (rewrite_param new_state.(purchases);
-         specialize (Forall_elements_f _ _ id x H IH) as prev_disc_zero;
+         specialize (FMap.Forall_elements_f _ _ id x H IH) as prev_disc_zero;
          cbn in prev_disc_zero;
-         apply Forall_elements_add; auto;
+         apply FMap.Forall_elements_add; auto;
          intros
     ) then (try (rewrite_param x0.(discarded_money); now apply prev_disc_zero)) else idtac.
     + rewrite_param new_state.(purchases).
@@ -1448,7 +1350,7 @@ Proof.
       rewrite (sumZ_permutation req_perm); cbn.
       rewrite_param x0.(pool); rewrite_param x0.(discarded_money).
       now setoid_rewrite IH.
-    + specialize (Forall_elements_f _ _ id x H H_disc_money) as prev_disc_zero; cbn in *.
+    + specialize (FMap.Forall_elements_f _ _ id x H H_disc_money) as prev_disc_zero; cbn in *.
       destruct (eqb (x.(seller_bit)) (buyer_bit));
       rewrite (sum_pool_discarded_add prev_state.(purchases) id x x0) by auto;
       try(rewrite H19 by auto); try(rewrite H20 by auto).
