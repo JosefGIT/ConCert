@@ -368,13 +368,17 @@ Module FMap.
     apply map_Forall_to_list_2 in forall_elements.
     apply (fin_maps.map_Forall_lookup_1 (prod_uncurry f) m k v); auto.
   Qed.
-
+  
   Lemma Forall_elements_f_remove : forall (m : FMap K V) (f : (K*V) -> Prop) (k : K),
     Forall f (elements m) ->
     Forall f (elements (remove k m)).
   Proof.
-  Admitted.
-
+    intros.
+    apply map_Forall_to_list_2.
+    apply map_Forall_to_list_2 in H0.
+    now apply fin_maps.map_Forall_delete.
+  Qed.
+  
   End Theories.
 End FMap.
 
